@@ -1,0 +1,674 @@
+# RunLedger :: cli
+#
+# Argument parsing and command dispatch. This is the only module that prints
+# user-facing command output and chooses process exit codes. It wires together
+# record / storage / gitmeta / render and keeps all I/O decisions in one place.
+#
+# Exit code convention:
+#   0  success
+#   1  operational failure (no such run, invalid status, corrupt file)
+#   2  usage error (bad/missing arguments)
+
+from src.util import iso_now, truthy
+from src.record import new_record, is_valid_status, valid_statuses, empty_usage, empty_cost
+from src.storage import generate_id, save_new, save_update, load, list_records, run_path, write_atomic_text
+from src.gitmeta import start_metadata, end_metadata
+from src.render import render_list, render_show, render_compare, render_report
+
+VERSION := "0.1.0"
+
+# ---------------------------------------------------------------------------
+# Argument parsing
+# ---------------------------------------------------------------------------
+
+# Split tokens after the subcommand into positionals and flags. Flag names in
+# `bool_flags` are treated as valueless switches (e.g. --json); every other
+# `--flag` consumes the next token as its value.
+func parse_args(tokens, bool_flags) {
+    mut positionals := []
+    mut flags := {}
+    mut i := 0
+    n := len(tokens)
+    while i < n {
+        tok := tokens[i]
+        if starts_with(tok, "--") {
+            key := substring(tok, 2, len(tok))
+            if includes(bool_flags, key) {
+                flags[key] := true
+            } else {
+                if i + 1 < n && starts_with(tokens[i + 1], "--") == false {
+                    flags[key] := tokens[i + 1]
+                    i = i + 1
+                } else {
+                    flags[key] := ""
+                }
+            }
+        } else {
+            positionals = push(positionals, tok)
+        }
+        i = i + 1
+    }
+    return {"positionals": positionals, "flags": flags}
+}
+
+func includes(arr, value) {
+    for item in arr {
+        if item == value {
+            return true
+        }
+    }
+    return false
+}
+
+func flag(parsed, name) {
+    if has_key(parsed["flags"], name) == 1 {
+        return parsed["flags"][name]
+    }
+    return null
+}
+
+func flag_or(parsed, name, fallback) {
+    v := flag(parsed, name)
+    if type(v) == "null" {
+        return fallback
+    }
+    return v
+}
+
+func has_flag(parsed, name) {
+    return has_key(parsed["flags"], name) == 1
+}
+
+# Resolve the ledger directory: --ledger flag, else RUNLEDGER_DIR env, else
+# the conventional ./.runledger in the current working directory.
+func resolve_ledger(parsed) {
+    f := flag(parsed, "ledger")
+    if type(f) != "null" && trim(f) != "" {
+        return f
+    }
+    if type(f) != "null" && trim(f) == "" {
+        return null
+    }
+    return env_or("RUNLEDGER_DIR", ".runledger")
+}
+
+# Refresh a record's updated_at timestamp.
+func touch(record) {
+    record["updated_at"] := iso_now()
+    return record
+}
+
+# Load a record or print an error + return null. `where` names the command for
+# the message.
+func require_record(ledger, id, where) {
+    if type(id) == "null" || id == "" {
+        print("error: " + where + " requires a <run-id>")
+        return null
+    }
+    rec := load(ledger, id)
+    if type(rec) == "null" {
+        print("error: no such run: " + id)
+        return null
+    }
+    if type(rec) == "dict" && has_key(rec, "error") == 1 {
+        print("error: " + rec["error"])
+        return null
+    }
+    return rec
+}
+
+# ---------------------------------------------------------------------------
+# Commands
+# ---------------------------------------------------------------------------
+
+func cmd_start(tokens) {
+    parsed := parse_args(tokens, [])
+    ledger := resolve_ledger(parsed)
+    if type(ledger) == "null" {
+        print("usage: runledger start --model <m> --provider <p> --task <t> [--prompt <file>] [--repo <path>] [--ledger <dir>]")
+        return 2
+    }
+    model := flag(parsed, "model")
+    provider := flag(parsed, "provider")
+    task := flag(parsed, "task")
+    if type(model) == "null" || trim(model) == "" || type(provider) == "null" || trim(provider) == "" || type(task) == "null" || trim(task) == "" {
+        print("usage: runledger start --model <m> --provider <p> --task <t> [--prompt <file>] [--repo <path>] [--ledger <dir>]")
+        return 2
+    }
+    repo := flag_or(parsed, "repo", ".")
+    if trim(repo) == "" {
+        print("usage: runledger start --model <m> --provider <p> --task <t> [--prompt <file>] [--repo <path>] [--ledger <dir>]")
+        return 2
+    }
+    prompt := flag(parsed, "prompt")
+
+    id := generate_id(ledger, model, task)
+    rec := new_record(id, provider, model, task, prompt, repo)
+
+    meta := start_metadata(repo)
+    rec["start_commit"] := meta["start_commit"]
+    rec["git_dirty_start"] := meta["git_dirty_start"]
+
+    res := save_new(ledger, rec)
+    if has_key(res, "error") == 1 {
+        print("error: " + res["error"])
+        return 1
+    }
+
+    print("Started run: " + id)
+    print("  storage:      " + run_path(ledger, id))
+    print("  repo:         " + repo)
+    print("  start commit: " + start_commit_label(rec))
+    print("")
+    print("Next: runledger finish " + id + " --status <pass|partial|fail|abandoned> --verdict \"...\"")
+    return 0
+}
+
+func start_commit_label(rec) {
+    c := rec["start_commit"]
+    if type(c) == "null" {
+        return "(no git)"
+    }
+    return c
+}
+
+func cmd_finish(tokens) {
+    parsed := parse_args(tokens, [])
+    ledger := resolve_ledger(parsed)
+    if type(ledger) == "null" {
+        print("usage: runledger finish <run-id> --status <pass|partial|fail|abandoned> --verdict \"text\" [--notes <text>] [--repo <path>] [--ledger <dir>]")
+        return 2
+    }
+    id := first_positional(parsed)
+    if type(id) == "null" || id == "" {
+        print("usage: runledger finish <run-id> --status <pass|partial|fail|abandoned> --verdict \"text\" [--notes <text>] [--repo <path>] [--ledger <dir>]")
+        return 2
+    }
+    rec := require_record(ledger, id, "finish")
+    if type(rec) == "null" {
+        return 1
+    }
+
+    status := flag(parsed, "status")
+    if type(status) == "null" || trim(status) == "" {
+        print("usage: runledger finish <run-id> --status <pass|partial|fail|abandoned> --verdict \"text\" [--notes <text>] [--repo <path>] [--ledger <dir>]")
+        return 2
+    }
+    if is_valid_status(status) == false {
+        print("error: invalid status '" + status + "'. Allowed: " + join(valid_statuses(), ", "))
+        return 1
+    }
+    if status == "in_progress" {
+        print("error: finish requires a terminal status: pass, partial, fail, or abandoned")
+        return 2
+    }
+    rec["status"] := status
+
+    verdict := flag(parsed, "verdict")
+    if type(verdict) == "null" || trim(verdict) == "" {
+        print("usage: runledger finish <run-id> --status <pass|partial|fail|abandoned> --verdict \"text\" [--notes <text>] [--repo <path>] [--ledger <dir>]")
+        return 2
+    }
+    rec["verdict"] := verdict
+
+    notes := flag(parsed, "notes")
+    if type(notes) != "null" && trim(notes) == "" {
+        print("usage: runledger finish <run-id> --status <pass|partial|fail|abandoned> --verdict \"text\" [--notes <text>] [--repo <path>] [--ledger <dir>]")
+        return 2
+    }
+    if type(notes) != "null" {
+        rec["notes"] := push(rec["notes"], {"at": iso_now(), "text": notes})
+    }
+
+    repo := flag_or(parsed, "repo", rec["repo_path"])
+    meta := end_metadata(repo)
+    rec["end_commit"] := meta["end_commit"]
+    rec["git_dirty_end"] := meta["git_dirty_end"]
+    rec["changed_files"] := meta["changed_files"]
+
+    touch(rec)
+    save_update(ledger, rec)
+    print("Finished run: " + id)
+    print("  status:       " + "${rec["status"]}")
+    print("  end commit:   " + start_or_dash(rec["end_commit"]))
+    print("  changed files: " + to_string(len(rec["changed_files"])))
+    return 0
+}
+
+func start_or_dash(v) {
+    if type(v) == "null" {
+        return "-"
+    }
+    return "${v}"
+}
+
+func cmd_list(tokens) {
+    parsed := parse_args(tokens, ["json"])
+    ledger := resolve_ledger(parsed)
+    if type(ledger) == "null" {
+        print("usage: runledger list [--json] [--ledger <dir>]")
+        return 2
+    }
+    recs := list_records(ledger)
+    if has_flag(parsed, "json") {
+        print(to_json_pretty(recs))
+        return 0
+    }
+    print(render_list(recs))
+    return 0
+}
+
+func cmd_show(tokens) {
+    parsed := parse_args(tokens, ["json"])
+    ledger := resolve_ledger(parsed)
+    if type(ledger) == "null" {
+        print("usage: runledger show <run-id> [--json] [--ledger <dir>]")
+        return 2
+    }
+    id := first_positional(parsed)
+    if type(id) == "null" || id == "" {
+        print("usage: runledger show <run-id> [--json] [--ledger <dir>]")
+        return 2
+    }
+    rec := require_record(ledger, id, "show")
+    if type(rec) == "null" {
+        return 1
+    }
+    if has_flag(parsed, "json") {
+        print(to_json_pretty(rec))
+        return 0
+    }
+    print(render_show(rec))
+    return 0
+}
+
+func cmd_note(tokens) {
+    parsed := parse_args(tokens, [])
+    ledger := resolve_ledger(parsed)
+    if type(ledger) == "null" {
+        print("usage: runledger note <run-id> \"note text\" [--ledger <dir>]")
+        return 2
+    }
+    id := first_positional(parsed)
+    if type(id) == "null" || id == "" {
+        print("usage: runledger note <run-id> \"note text\"")
+        return 2
+    }
+    rec := require_record(ledger, id, "note")
+    if type(rec) == "null" {
+        return 1
+    }
+    text := second_positional(parsed)
+    if type(text) == "null" || text == "" {
+        print("usage: runledger note <run-id> \"note text\"")
+        return 2
+    }
+    rec["notes"] := push(rec["notes"], {"at": iso_now(), "text": text})
+    touch(rec)
+    save_update(ledger, rec)
+    print("Added note to " + id)
+    return 0
+}
+
+func cmd_followup(tokens) {
+    parsed := parse_args(tokens, [])
+    ledger := resolve_ledger(parsed)
+    if type(ledger) == "null" {
+        print("usage: runledger followup <run-id> \"follow-up text\" [--ledger <dir>]")
+        return 2
+    }
+    id := first_positional(parsed)
+    if type(id) == "null" || id == "" {
+        print("usage: runledger followup <run-id> \"follow-up text\"")
+        return 2
+    }
+    rec := require_record(ledger, id, "followup")
+    if type(rec) == "null" {
+        return 1
+    }
+    text := second_positional(parsed)
+    if type(text) == "null" || text == "" {
+        print("usage: runledger followup <run-id> \"follow-up text\"")
+        return 2
+    }
+    rec["followups"] := push(rec["followups"], {"at": iso_now(), "text": text})
+    touch(rec)
+    save_update(ledger, rec)
+    print("Added follow-up to " + id)
+    return 0
+}
+
+func cmd_usage(tokens) {
+    parsed := parse_args(tokens, [])
+    ledger := resolve_ledger(parsed)
+    if type(ledger) == "null" {
+        print("usage: runledger usage <run-id> [--input N] [--output N] [--cache-read N] [--cache-write N] [--ledger <dir>]")
+        return 2
+    }
+    id := first_positional(parsed)
+    if type(id) == "null" || id == "" {
+        print("usage: runledger usage <run-id> [--input N] [--output N] [--cache-read N] [--cache-write N] [--ledger <dir>]")
+        return 2
+    }
+    rec := require_record(ledger, id, "usage")
+    if type(rec) == "null" {
+        return 1
+    }
+    usage := rec["usage"]
+    if type(usage) != "dict" {
+        usage = empty_usage()
+    }
+    res := set_int_flag(usage, "input_tokens", flag(parsed, "input"), "input")
+    if has_key(res, "error") == 1 {
+        print("error: " + res["error"])
+        return 2
+    }
+    usage = res["value"]
+    res = set_int_flag(usage, "output_tokens", flag(parsed, "output"), "output")
+    if has_key(res, "error") == 1 {
+        print("error: " + res["error"])
+        return 2
+    }
+    usage = res["value"]
+    res = set_int_flag(usage, "cache_read_tokens", flag(parsed, "cache-read"), "cache-read")
+    if has_key(res, "error") == 1 {
+        print("error: " + res["error"])
+        return 2
+    }
+    usage = res["value"]
+    res = set_int_flag(usage, "cache_write_tokens", flag(parsed, "cache-write"), "cache-write")
+    if has_key(res, "error") == 1 {
+        print("error: " + res["error"])
+        return 2
+    }
+    usage = res["value"]
+    rec["usage"] := usage
+    touch(rec)
+    save_update(ledger, rec)
+    print("Updated usage for " + id)
+    return 0
+}
+
+func set_int_flag(target, key, value, flag_name) {
+    if type(value) == "null" {
+        return {"value": target}
+    }
+    if is_non_negative_int(value) == false {
+        return {"error": "--" + flag_name + " must be a non-negative integer"}
+    }
+    target[key] := parse_int(value)
+    return {"value": target}
+}
+
+func cmd_cost(tokens) {
+    parsed := parse_args(tokens, [])
+    ledger := resolve_ledger(parsed)
+    if type(ledger) == "null" {
+        print("usage: runledger cost <run-id> [--total N] [--currency CODE] [--input N] [--output N] [--cache N] [--ledger <dir>]")
+        return 2
+    }
+    id := first_positional(parsed)
+    if type(id) == "null" || id == "" {
+        print("usage: runledger cost <run-id> [--total N] [--currency CODE] [--input N] [--output N] [--cache N] [--ledger <dir>]")
+        return 2
+    }
+    rec := require_record(ledger, id, "cost")
+    if type(rec) == "null" {
+        return 1
+    }
+    cost := rec["cost"]
+    if type(cost) != "dict" {
+        cost = empty_cost()
+    }
+    currency := flag(parsed, "currency")
+    if type(currency) != "null" && trim(currency) == "" {
+        print("usage: runledger cost <run-id> [--total N] [--currency CODE] [--input N] [--output N] [--cache N] [--ledger <dir>]")
+        return 2
+    }
+    if type(currency) != "null" {
+        cost["currency"] := currency
+    }
+    res := set_float_flag(cost, "input_cost", flag(parsed, "input"), "input")
+    if has_key(res, "error") == 1 {
+        print("error: " + res["error"])
+        return 2
+    }
+    cost = res["value"]
+    res = set_float_flag(cost, "output_cost", flag(parsed, "output"), "output")
+    if has_key(res, "error") == 1 {
+        print("error: " + res["error"])
+        return 2
+    }
+    cost = res["value"]
+    res = set_float_flag(cost, "cache_cost", flag(parsed, "cache"), "cache")
+    if has_key(res, "error") == 1 {
+        print("error: " + res["error"])
+        return 2
+    }
+    cost = res["value"]
+    res = set_float_flag(cost, "total_cost", flag(parsed, "total"), "total")
+    if has_key(res, "error") == 1 {
+        print("error: " + res["error"])
+        return 2
+    }
+    cost = res["value"]
+    rec["cost"] := cost
+    touch(rec)
+    save_update(ledger, rec)
+    print("Updated cost for " + id)
+    return 0
+}
+
+func set_float_flag(target, key, value, flag_name) {
+    if type(value) == "null" {
+        return {"value": target}
+    }
+    if is_non_negative_float(value) == false {
+        return {"error": "--" + flag_name + " must be a non-negative number"}
+    }
+    target[key] := parse_float(value)
+    return {"value": target}
+}
+
+func is_non_negative_int(text) {
+    if type(text) != "string" || text == "" {
+        return false
+    }
+    mut i := 0
+    while i < len(text) {
+        if is_digit(substring(text, i, i + 1)) == false {
+            return false
+        }
+        i = i + 1
+    }
+    return true
+}
+
+func is_non_negative_float(text) {
+    if type(text) != "string" || text == "" {
+        return false
+    }
+    mut dots := 0
+    mut digits := 0
+    mut i := 0
+    while i < len(text) {
+        ch := substring(text, i, i + 1)
+        if ch == "." {
+            dots = dots + 1
+            if dots > 1 {
+                return false
+            }
+        } else if is_digit(ch) {
+            digits = digits + 1
+        } else {
+            return false
+        }
+        i = i + 1
+    }
+    return digits > 0
+}
+
+func is_digit(ch) {
+    return contains("0123456789", ch) == 1
+}
+
+func cmd_compare(tokens) {
+    parsed := parse_args(tokens, ["json"])
+    ledger := resolve_ledger(parsed)
+    if type(ledger) == "null" {
+        print("usage: runledger compare [--task <name>] [--json] [--ledger <dir>]")
+        return 2
+    }
+    recs := list_records(ledger)
+    task := flag(parsed, "task")
+    if type(task) != "null" {
+        recs = filter_by_task(recs, task)
+    }
+    if has_flag(parsed, "json") {
+        print(to_json_pretty(recs))
+        return 0
+    }
+    print(render_compare(recs))
+    return 0
+}
+
+func filter_by_task(records, task) {
+    mut out := []
+    for r in records {
+        if "${r["task_name"]}" == task {
+            out = push(out, r)
+        }
+    }
+    return out
+}
+
+func cmd_report(tokens) {
+    parsed := parse_args(tokens, [])
+    ledger := resolve_ledger(parsed)
+    if type(ledger) == "null" {
+        print("usage: runledger report [--task <name>] [--output <file>] [--ledger <dir>]")
+        return 2
+    }
+    recs := list_records(ledger)
+    task := flag(parsed, "task")
+    if type(task) != "null" {
+        recs = filter_by_task(recs, task)
+    }
+    md := render_report(recs)
+    output := flag(parsed, "output")
+    if type(output) != "null" && output != "" {
+        write_atomic_text(output, md)
+        print("Wrote report to " + output)
+        return 0
+    }
+    print(md)
+    return 0
+}
+
+func first_positional(parsed) {
+    p := parsed["positionals"]
+    if len(p) >= 1 {
+        return p[0]
+    }
+    return null
+}
+
+func second_positional(parsed) {
+    p := parsed["positionals"]
+    if len(p) >= 2 {
+        return p[1]
+    }
+    return null
+}
+
+# ---------------------------------------------------------------------------
+# Help / dispatch
+# ---------------------------------------------------------------------------
+
+func print_help() {
+    print("runledger " + VERSION + " — a local ledger for AI-agent build runs")
+    print("")
+    print("Usage: runledger <command> [arguments]")
+    print("")
+    print("Commands:")
+    print("  start      Begin a new run record")
+    print("             usage: runledger start --model <m> --provider <p> --task <t> [--prompt <file>] [--repo <path>]")
+    print("  finish     Finalize a run (status, verdict, end git state)")
+    print("             usage: runledger finish <run-id> --status <pass|partial|fail|abandoned> --verdict \"text\"")
+    print("  list       List recorded runs in a compact table")
+    print("             usage: runledger list [--json]")
+    print("  show       Show one run (add --json for the raw record)")
+    print("             usage: runledger show <run-id> [--json]")
+    print("  note       Add a timestamped note to a run")
+    print("             usage: runledger note <run-id> \"note text\"")
+    print("  followup   Add a follow-up item to a run")
+    print("             usage: runledger followup <run-id> \"follow-up text\"")
+    print("  usage      Record token usage for a run")
+    print("             usage: runledger usage <run-id> [--input N] [--output N] [--cache-read N] [--cache-write N]")
+    print("  cost       Record cost for a run")
+    print("             usage: runledger cost <run-id> [--total N] [--currency CODE] [--input N] [--output N] [--cache N]")
+    print("  compare    Compare runs in the ledger")
+    print("             usage: runledger compare [--task <name>] [--json]")
+    print("  report     Generate a markdown report (--output <file> to save)")
+    print("             usage: runledger report [--task <name>] [--output <file>]")
+    print("  help       Show this help")
+    print("  version    Show version")
+    print("")
+    print("Global:")
+    print("  --ledger <dir>   Ledger location (default ./.runledger, or $RUNLEDGER_DIR)")
+    print("")
+    print("Run scripts via: kujo run runledger.kujo -- <command> [arguments]")
+}
+
+# Entry point. `argv` is the user argument list (args()).
+export func main(argv) {
+    if len(argv) == 0 {
+        print_help()
+        return 0
+    }
+    cmd := argv[0]
+    rest := slice(argv, 1, len(argv))
+
+    if cmd == "help" || cmd == "--help" || cmd == "-h" {
+        print_help()
+        return 0
+    }
+    if cmd == "version" || cmd == "--version" || cmd == "-V" {
+        print("runledger " + VERSION)
+        return 0
+    }
+    if cmd == "start" {
+        return cmd_start(rest)
+    }
+    if cmd == "finish" {
+        return cmd_finish(rest)
+    }
+    if cmd == "list" {
+        return cmd_list(rest)
+    }
+    if cmd == "show" {
+        return cmd_show(rest)
+    }
+    if cmd == "note" {
+        return cmd_note(rest)
+    }
+    if cmd == "followup" {
+        return cmd_followup(rest)
+    }
+    if cmd == "usage" {
+        return cmd_usage(rest)
+    }
+    if cmd == "cost" {
+        return cmd_cost(rest)
+    }
+    if cmd == "compare" {
+        return cmd_compare(rest)
+    }
+    if cmd == "report" {
+        return cmd_report(rest)
+    }
+
+    print("error: unknown command '" + cmd + "'")
+    print("Run 'runledger help' for usage.")
+    return 2
+}

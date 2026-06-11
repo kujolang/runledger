@@ -1,0 +1,130 @@
+# RunLedger :: gitmeta
+#
+# Defensive, read-only git metadata collection. Everything here tolerates the
+# absence of git or of a repository: callers always get a structured answer and
+# the tool never fails just because git is unavailable. Only read-only git
+# commands are ever run (rev-parse / status / diff). Nothing mutates repo state.
+
+# Quote a path for safe inclusion in a shell command. We escape embedded single
+# quotes the POSIX way and wrap the whole thing in single quotes.
+func shq(path) {
+    escaped := replace_str(path, "'", "'\\''")
+    return "'" + escaped + "'"
+}
+
+# Run a read-only git command against `repo_path` and return the ProcessResult.
+# Using `git -C <path>` keeps us in the target repo without changing cwd.
+func git(repo_path, subcmd) {
+    cmd := "git -C " + shq(repo_path) + " " + subcmd
+    return execute_status(cmd)
+}
+
+# True if git exists and `repo_path` is inside a working tree. This is the gate
+# every other helper checks first.
+export func is_repo(repo_path) {
+    r := git(repo_path, "rev-parse --is-inside-work-tree")
+    if r.exitcode == 0 && trim(r.stdout) == "true" {
+        return true
+    }
+    return false
+}
+
+# Current commit hash (full SHA), or null when unavailable (no git, no repo, or
+# a repo with no commits yet).
+export func head_commit(repo_path) {
+    if is_repo(repo_path) == false {
+        return null
+    }
+    r := git(repo_path, "rev-parse HEAD")
+    if r.exitcode == 0 {
+        return trim(r.stdout)
+    }
+    return null
+}
+
+# Whether the working tree has uncommitted changes. Returns null when git/repo
+# is unavailable so callers can distinguish "clean" from "unknown".
+export func is_dirty(repo_path) {
+    if is_repo(repo_path) == false {
+        return null
+    }
+    r := git(repo_path, "status --porcelain")
+    if r.exitcode != 0 {
+        return null
+    }
+    return trim(r.stdout) != ""
+}
+
+# List files changed in the working tree relative to HEAD (tracked changes plus
+# untracked files), de-duplicated. Returns an empty array when clean and an
+# empty array when git/repo is unavailable.
+export func changed_files(repo_path) {
+    mut out := []
+    if is_repo(repo_path) == false {
+        return out
+    }
+    # Tracked modifications/staged changes against HEAD.
+    tracked := git(repo_path, "diff --name-only HEAD")
+    if tracked.exitcode == 0 {
+        out = collect_lines(out, tracked.stdout)
+    } else {
+        # Repos with no commits have no HEAD; collect staged + unstaged tracked
+        # paths using index/worktree comparisons.
+        staged := git(repo_path, "diff --name-only --cached")
+        if staged.exitcode == 0 {
+            out = collect_lines(out, staged.stdout)
+        }
+        unstaged := git(repo_path, "diff --name-only")
+        if unstaged.exitcode == 0 {
+            out = collect_lines(out, unstaged.stdout)
+        }
+    }
+    # Untracked files not yet known to git.
+    untracked := git(repo_path, "ls-files --others --exclude-standard")
+    if untracked.exitcode == 0 {
+        out = collect_lines(out, untracked.stdout)
+    }
+    return out
+}
+
+# Append the non-empty, de-duplicated trimmed lines of `text` to `acc`.
+func collect_lines(acc, text) {
+    mut out := acc
+    lines := split(text, "\n")
+    for line in lines {
+        name := trim(line)
+        if name != "" {
+            if includes(out, name) == false {
+                out = push(out, name)
+            }
+        }
+    }
+    return out
+}
+
+# Small membership helper (avoids depending on predicate return-type quirks).
+func includes(arr, value) {
+    for item in arr {
+        if item == value {
+            return true
+        }
+    }
+    return false
+}
+
+# Bundle the git facts captured at the start of a run.
+export func start_metadata(repo_path) {
+    return {
+        "start_commit": head_commit(repo_path),
+        "git_dirty_start": is_dirty(repo_path)
+    }
+}
+
+# Bundle the git facts captured when a run is finished.
+export func end_metadata(repo_path) {
+    return {
+        "end_commit": head_commit(repo_path),
+        "git_dirty_end": is_dirty(repo_path),
+        "changed_files": changed_files(repo_path)
+    }
+}

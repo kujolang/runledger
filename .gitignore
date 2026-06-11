@@ -1,0 +1,5 @@
+# RunLedger ledgers are local working data, not source.
+.runledger/
+
+# Generated reports (the committed sample lives under examples/).
+/RUNLEDGER_REPORT.md

@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# RunLedger launcher.
+#
+# Thin convenience wrapper so you can type `runledger <command>` instead of
+# `kujo run /path/to/runledger.kujo -- <command>`.
+#
+# It runs the Kujo interpreter on the project entrypoint, preserving your
+# current working directory (so the default ./.runledger ledger lands where you
+# invoke it). Override the interpreter with the KUJO environment variable, e.g.
+#   KUJO=/path/to/kujo/target/release/kujo runledger list
+set -euo pipefail
+
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+KUJO="${KUJO:-kujo}"
+
+if ! command -v "$KUJO" >/dev/null 2>&1 && [ ! -x "$KUJO" ]; then
+  echo "runledger: cannot find the Kujo interpreter ('$KUJO')." >&2
+  echo "Set KUJO to your kujo binary, e.g. KUJO=/path/to/kujo/target/release/kujo" >&2
+  exit 127
+fi
+
+exec "$KUJO" run "$PROJECT_DIR/runledger.kujo" -- "$@"

@@ -1,0 +1,14 @@
+# RunLedger entrypoint.
+#
+# Thin wrapper: parse no logic here, just hand user arguments to the CLI module
+# and translate its return code into a process exit code.
+#
+# Run with:
+#   kujo run runledger.kujo -- <command> [arguments]
+# or via the bin/runledger wrapper:
+#   ./bin/runledger <command> [arguments]
+
+from src.cli import main
+
+code := main(args())
+exit(code)

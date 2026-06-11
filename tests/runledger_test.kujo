@@ -1,0 +1,227 @@
+# RunLedger test suite.
+#
+# A self-contained, filesystem-isolated harness. It exercises the library
+# modules directly (the same functions the CLI delegates to), using a throwaway
+# ledger and a throwaway git repo under the system temp directory. It needs no
+# network, no API key, and no global machine state.
+#
+# Run with:
+#   kujo run tests/runledger_test.kujo
+# Exits non-zero if any assertion fails.
+#
+# NOTE: the built-in `test "..." {}` framework cannot see file-level imports on
+# the current runtime, so this hand-rolled harness is used instead. It runs on
+# the standard `kujo run` path where module imports work normally.
+
+from src.util import slug, iso_now, pad_int
+from src.record import new_record, is_valid_status, valid_statuses, empty_usage, empty_cost, changed_file_count, followup_count
+from src.storage import generate_id, save_new, save_update, load, list_records, exists, ensure_ledger, run_path
+from src.gitmeta import is_repo, head_commit, is_dirty, changed_files, start_metadata, end_metadata
+from src.render import render_list, render_show, render_compare, render_report, status_counts, cost_total, cost_label
+
+mut passed := 0
+mut failed := 0
+
+func check(cond, name) {
+    if cond == true {
+        passed = passed + 1
+    } else {
+        failed = failed + 1
+        print("  FAIL: " + name)
+    }
+}
+
+func check_eq(actual, expected, name) {
+    if "${actual}" == "${expected}" {
+        passed = passed + 1
+    } else {
+        failed = failed + 1
+        print("  FAIL: " + name + " (expected ${expected}, got ${actual})")
+    }
+}
+
+func sh(cmd) {
+    return execute_status(cmd)
+}
+
+# Throwaway workspace.
+WORK := join_path(env_or("TMPDIR", "/tmp"), "runledger_selftest")
+LEDGER := join_path(WORK, "ledger")
+REPO := join_path(WORK, "repo")
+PLAIN := join_path(WORK, "plain")
+
+func setup() {
+    sh("rm -rf " + WORK)
+    create_dir(WORK)
+    create_dir(PLAIN)
+    # A real git repo to exercise the git metadata layer.
+    create_dir(REPO)
+    sh("git -C " + REPO + " init -q")
+    sh("git -C " + REPO + " config user.email t@t.com")
+    sh("git -C " + REPO + " config user.name test")
+    write_file(join_path(REPO, "app.txt"), "v1\n")
+    sh("git -C " + REPO + " add app.txt")
+    sh("git -C " + REPO + " commit -qm init")
+}
+
+func teardown() {
+    sh("rm -rf " + WORK)
+}
+
+# --- util ---------------------------------------------------------------
+func test_util() {
+    check_eq(slug("Build RunLedger!"), "build-runledger", "slug strips punctuation")
+    check_eq(slug("claude-opus-4-8"), "claude-opus-4-8", "slug preserves model name")
+    check_eq(pad_int(7, 3), "007", "pad_int zero pads")
+    check(len(iso_now()) == 20, "iso_now is 20 chars (….Z)")
+    check(ends_with(iso_now(), "Z"), "iso_now ends with Z")
+}
+
+# --- record: shape + validation ----------------------------------------
+func test_record() {
+    r := new_record("id-1", "anthropic", "claude-opus-4-8", "Task", "p.md", ".")
+    check_eq(r["status"], "in_progress", "new record starts in_progress")
+    check_eq(r["id"], "id-1", "record id set")
+    check_eq(type(r["end_commit"]), "null", "end_commit null at start")
+    check_eq(len(r["changed_files"]), 0, "changed_files empty")
+    check_eq(type(r["usage"]), "dict", "usage block present")
+    check_eq(type(r["usage"]["input_tokens"]), "null", "usage tokens null at start")
+    check_eq(r["cost"]["currency"], "USD", "cost currency defaults USD")
+    # invalid status behavior
+    check(is_valid_status("pass") == true, "pass is valid status")
+    check(is_valid_status("bogus") == false, "bogus is invalid status")
+    check_eq(len(valid_statuses()), 5, "five valid statuses")
+}
+
+# --- storage: create / no-overwrite / load / list / id ------------------
+func test_storage() {
+    id := generate_id(LEDGER, "claude-opus-4-8", "Build RunLedger")
+    check_eq(id, "${today_prefix()}-claude-opus-4-8-build-runledger-001", "id has expected shape")
+    rec := new_record(id, "anthropic", "claude-opus-4-8", "Build RunLedger", null, ".")
+    res := save_new(LEDGER, rec)
+    check(has_key(res, "ok") == 1, "save_new succeeds")
+    check(exists(LEDGER, id) == true, "run exists after save")
+    # no silent overwrite
+    res2 := save_new(LEDGER, rec)
+    check(has_key(res2, "error") == 1, "save_new refuses to overwrite")
+    # id increments
+    id2 := generate_id(LEDGER, "claude-opus-4-8", "Build RunLedger")
+    check(ends_with(id2, "-002"), "second id increments to 002")
+    # missing run id loads as null
+    check_eq(type(load(LEDGER, "does-not-exist")), "null", "missing run loads null")
+    # round-trip load
+    back := load(LEDGER, id)
+    check_eq(back["id"], id, "loaded id matches")
+    # list
+    recs := list_records(LEDGER)
+    check_eq(len(recs), 1, "list returns one persisted run")
+}
+
+func today_prefix() {
+    return format_date(now(), "YYYY-MM-DD")
+}
+
+# --- finish / notes / followups / usage / cost --------------------------
+func test_lifecycle() {
+    id := generate_id(LEDGER, "lifecycle", "lc")
+    rec := new_record(id, "anthropic", "lifecycle", "lc", null, REPO)
+    sm := start_metadata(REPO)
+    rec["start_commit"] := sm["start_commit"]
+    rec["git_dirty_start"] := sm["git_dirty_start"]
+    save_new(LEDGER, rec)
+    check(type(rec["start_commit"]) == "string", "start commit captured from git")
+    check_eq(rec["git_dirty_start"], false, "clean repo dirty_start false")
+
+    # mutate repo so end metadata has a change
+    write_file(join_path(REPO, "extra.txt"), "new\n")
+
+    # finish
+    rec["status"] := "pass"
+    rec["verdict"] := "usable"
+    em := end_metadata(REPO)
+    rec["end_commit"] := em["end_commit"]
+    rec["git_dirty_end"] := em["git_dirty_end"]
+    rec["changed_files"] := em["changed_files"]
+    save_update(LEDGER, rec)
+    reloaded := load(LEDGER, id)
+    check_eq(reloaded["status"], "pass", "finish updates status")
+    check_eq(reloaded["verdict"], "usable", "finish records verdict")
+    check_eq(reloaded["git_dirty_end"], true, "dirty_end true after change")
+    check(changed_file_count(reloaded) >= 1, "changed files detected on finish")
+
+    # notes
+    rec["notes"] := push(rec["notes"], {"at": iso_now(), "text": "a note"})
+    save_update(LEDGER, rec)
+    check_eq(len(load(LEDGER, id)["notes"]), 1, "note added and persisted")
+
+    # followups
+    rec["followups"] := push(rec["followups"], {"at": iso_now(), "text": "a followup"})
+    save_update(LEDGER, rec)
+    check_eq(followup_count(load(LEDGER, id)), 1, "followup added and persisted")
+
+    # usage
+    usage := rec["usage"]
+    usage["input_tokens"] := 120000
+    usage["output_tokens"] := 18000
+    rec["usage"] := usage
+    save_update(LEDGER, rec)
+    check_eq(load(LEDGER, id)["usage"]["input_tokens"], 120000, "usage input recorded")
+
+    # cost
+    cost := rec["cost"]
+    cost["total_cost"] := 1.25
+    rec["cost"] := cost
+    save_update(LEDGER, rec)
+    check_eq(load(LEDGER, id)["cost"]["total_cost"], 1.25, "cost total recorded")
+    check_eq(cost_label(load(LEDGER, id)), "1.25 USD", "cost label formats")
+}
+
+# --- json output --------------------------------------------------------
+func test_json_output() {
+    recs := list_records(LEDGER)
+    j := to_json_pretty(recs)
+    parsed := parse_json(j)
+    check(type(parsed) == "array" || type(parsed) == "list", "show/list --json round-trips")
+    check(len(parsed) == len(recs), "json array length matches")
+}
+
+# --- report -------------------------------------------------------------
+func test_report() {
+    recs := list_records(LEDGER)
+    md := render_report(recs)
+    check(contains(md, "# RunLedger Report") == 1, "report has title")
+    check(contains(md, "## Summary") == 1, "report has summary section")
+    check(contains(md, "## Follow-ups") == 1, "report has followups section")
+    counts := status_counts(recs)
+    check(counts["pass"] >= 1, "status counts include the passed run")
+    ct := cost_total(recs)
+    check(ct["total"] >= 1.25, "cost total aggregates")
+}
+
+# --- behavior outside a git repo ---------------------------------------
+func test_non_git() {
+    check_eq(is_repo(PLAIN), false, "plain dir is not a repo")
+    check_eq(type(head_commit(PLAIN)), "null", "no head commit outside repo")
+    check_eq(type(is_dirty(PLAIN)), "null", "dirty unknown outside repo")
+    check_eq(len(changed_files(PLAIN)), 0, "no changed files outside repo")
+    sm := start_metadata(PLAIN)
+    check_eq(type(sm["start_commit"]), "null", "start metadata null outside repo")
+}
+
+# --- run all ------------------------------------------------------------
+setup()
+test_util()
+test_record()
+test_storage()
+test_lifecycle()
+test_json_output()
+test_report()
+test_non_git()
+teardown()
+
+print("")
+print("RunLedger tests: ${passed} passed, ${failed} failed")
+if failed > 0 {
+    exit(1)
+}
+exit(0)

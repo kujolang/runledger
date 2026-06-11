@@ -1,0 +1,407 @@
+# RunLedger :: render
+#
+# Pure presentation: turn run records into compact tables, a readable single-run
+# view, a comparison table, and a markdown report. Nothing here touches disk or
+# git; callers pass in already-loaded records. Output is plain text/markdown so
+# it is stable and automation-friendly.
+#
+# Loops here are written as index-based `while` loops on purpose: the current
+# Kujo compile path rejects more than one `for` loop per function scope, so the
+# index form keeps the whole module compiling cleanly under `kujo check`.
+
+from src.util import pad_right, display, display_or
+from src.record import changed_file_count, followup_count, valid_statuses
+
+# Human-friendly cost string for a record's cost block: "1.25 USD" or "-".
+export func cost_label(record) {
+    cost := record["cost"]
+    if type(cost) == "null" {
+        return "-"
+    }
+    total := cost["total_cost"]
+    if type(total) == "null" {
+        return "-"
+    }
+    currency := display_or(cost["currency"], "USD")
+    return "${total} ${currency}"
+}
+
+# Render a list of [cell, cell, ...] rows under `headers` as an aligned,
+# fixed-width text table. Returns the full table as a single string.
+export func text_table(headers, rows) {
+    ncol := len(headers)
+    mut widths := []
+    mut c := 0
+    while c < ncol {
+        widths = push(widths, len(headers[c]))
+        c = c + 1
+    }
+    mut ri := 0
+    while ri < len(rows) {
+        row := rows[ri]
+        mut i := 0
+        while i < ncol {
+            cell := "${row[i]}"
+            if len(cell) > widths[i] {
+                widths[i] := len(cell)
+            }
+            i = i + 1
+        }
+        ri = ri + 1
+    }
+    mut out := render_row(headers, widths)
+    mut seps := []
+    mut k := 0
+    while k < ncol {
+        seps = push(seps, repeat("-", widths[k]))
+        k = k + 1
+    }
+    out = out + "\n" + render_row(seps, widths)
+    mut rj := 0
+    while rj < len(rows) {
+        out = out + "\n" + render_row(rows[rj], widths)
+        rj = rj + 1
+    }
+    return out
+}
+
+# Render one padded row with "  " column separators.
+func render_row(cells, widths) {
+    mut parts := []
+    mut i := 0
+    while i < len(cells) {
+        parts = push(parts, pad_right("${cells[i]}", widths[i]))
+        i = i + 1
+    }
+    return join(parts, "  ")
+}
+
+# Compact ledger listing.
+export func render_list(records) {
+    if len(records) == 0 {
+        return "No runs recorded yet. Start one with: runledger start ..."
+    }
+    headers := ["ID", "CREATED", "PROVIDER", "MODEL", "TASK", "STATUS", "VERDICT", "COST"]
+    mut rows := []
+    mut i := 0
+    while i < len(records) {
+        r := records[i]
+        rows = push(rows, [
+            r["id"],
+            created_date(r),
+            display(r["provider"]),
+            display(r["model"]),
+            display(r["task_name"]),
+            display(r["status"]),
+            display_or(r["verdict"], "-"),
+            cost_label(r)
+        ])
+        i = i + 1
+    }
+    return text_table(headers, rows)
+}
+
+# Just the date portion (YYYY-MM-DD) of created_at for compact tables.
+func created_date(record) {
+    ts := record["created_at"]
+    if type(ts) == "string" && len(ts) >= 10 {
+        return substring(ts, 0, 10)
+    }
+    return display(ts)
+}
+
+# Detailed, readable single-run view (no raw JSON).
+export func render_show(record) {
+    mut lines := []
+    lines = push(lines, "Run: " + display(record["id"]))
+    lines = push(lines, "  Status:     " + display(record["status"]))
+    lines = push(lines, "  Task:       " + display(record["task_name"]))
+    lines = push(lines, "  Provider:   " + display(record["provider"]))
+    lines = push(lines, "  Model:      " + display(record["model"]))
+    lines = push(lines, "  Prompt:     " + display_or(record["prompt_file"], "-"))
+    lines = push(lines, "  Repo:       " + display(record["repo_path"]))
+    lines = push(lines, "  Created:    " + display(record["created_at"]))
+    lines = push(lines, "  Updated:    " + display(record["updated_at"]))
+    lines = push(lines, "  Verdict:    " + display_or(record["verdict"], "-"))
+    lines = push(lines, "")
+    lines = push(lines, "  Git:")
+    lines = push(lines, "    start commit: " + display_or(record["start_commit"], "-"))
+    lines = push(lines, "    end commit:   " + display_or(record["end_commit"], "-"))
+    lines = push(lines, "    dirty start:  " + display(record["git_dirty_start"]))
+    lines = push(lines, "    dirty end:    " + display(record["git_dirty_end"]))
+    lines = push(lines, "    changed files (" + to_string(changed_file_count(record)) + "):")
+    files := record["changed_files"]
+    mut fi := 0
+    while fi < len(files) {
+        lines = push(lines, "      - " + files[fi])
+        fi = fi + 1
+    }
+    lines = push(lines, "")
+    lines = push(lines, "  Usage:")
+    usage := record["usage"]
+    lines = push(lines, "    input:       " + display(usage["input_tokens"]))
+    lines = push(lines, "    output:      " + display(usage["output_tokens"]))
+    lines = push(lines, "    cache read:  " + display(usage["cache_read_tokens"]))
+    lines = push(lines, "    cache write: " + display(usage["cache_write_tokens"]))
+    lines = push(lines, "  Cost: " + cost_label(record))
+    lines = push(lines, "")
+    lines = push(lines, "  Follow-ups (" + to_string(followup_count(record)) + "):")
+    followups := record["followups"]
+    mut ui := 0
+    while ui < len(followups) {
+        lines = push(lines, "    - " + render_entry(followups[ui]))
+        ui = ui + 1
+    }
+    lines = push(lines, "")
+    notes := record["notes"]
+    lines = push(lines, "  Notes (" + to_string(len(notes)) + "):")
+    mut ni := 0
+    while ni < len(notes) {
+        lines = push(lines, "    - " + render_entry(notes[ni]))
+        ni = ni + 1
+    }
+    return join(lines, "\n")
+}
+
+# Render a note/followup entry. Entries are {"at": iso, "text": str} dicts but we
+# tolerate plain strings too.
+func render_entry(item) {
+    if type(item) == "dict" {
+        at := display_or(item["at"], "")
+        text := display_or(item["text"], "")
+        if at == "" {
+            return text
+        }
+        return "[" + at + "] " + text
+    }
+    return "${item}"
+}
+
+# Comparison table across runs.
+export func render_compare(records) {
+    if len(records) == 0 {
+        return "No runs to compare."
+    }
+    headers := ["ID", "MODEL", "TASK", "STATUS", "VERDICT", "FILES", "FOLLOWUPS", "COST"]
+    mut rows := []
+    mut i := 0
+    while i < len(records) {
+        r := records[i]
+        rows = push(rows, [
+            r["id"],
+            display(r["model"]),
+            display(r["task_name"]),
+            display(r["status"]),
+            display_or(r["verdict"], "-"),
+            to_string(changed_file_count(r)),
+            to_string(followup_count(r)),
+            cost_label(r)
+        ])
+        i = i + 1
+    }
+    return text_table(headers, rows)
+}
+
+# Count how many records carry each status.
+export func status_counts(records) {
+    mut counts := {}
+    statuses := valid_statuses()
+    mut si := 0
+    while si < len(statuses) {
+        counts[statuses[si]] := 0
+        si = si + 1
+    }
+    mut ri := 0
+    while ri < len(records) {
+        st := records[ri]["status"]
+        if type(st) == "string" && has_key(counts, st) == 1 {
+            counts[st] := counts[st] + 1
+        }
+        ri = ri + 1
+    }
+    return counts
+}
+
+# Sum total_cost across runs that have one. Returns {"total": float, "n": int}.
+export func cost_total(records) {
+    mut total := 0.0
+    mut n := 0
+    mut i := 0
+    while i < len(records) {
+        cost := records[i]["cost"]
+        if type(cost) == "dict" {
+            t := cost["total_cost"]
+            if type(t) != "null" {
+                total = total + t
+                n = n + 1
+            }
+        }
+        i = i + 1
+    }
+    return {"total": total, "n": n}
+}
+
+# Markdown row helper for the report.
+func md_row(cells) {
+    return "| " + join(cells, " | ") + " |"
+}
+
+# Full markdown report.
+export func render_report(records) {
+    counts := status_counts(records)
+    mut out := []
+    out = push(out, "# RunLedger Report")
+    out = push(out, "")
+    out = push(out, "Generated: " + format_date(now(), "YYYY-MM-DDTHH:mm:ssZ"))
+    out = push(out, "")
+    out = push(out, "## Summary")
+    out = push(out, "")
+    out = push(out, md_row(["Runs", "Pass", "Partial", "Fail", "Abandoned"]))
+    out = push(out, md_row(["---:", "---:", "---:", "---:", "---:"]))
+    out = push(out, md_row([
+        to_string(len(records)),
+        to_string(counts["pass"]),
+        to_string(counts["partial"]),
+        to_string(counts["fail"]),
+        to_string(counts["abandoned"])
+    ]))
+    out = push(out, "")
+
+    ct := cost_total(records)
+    out = push(out, "## Cost")
+    out = push(out, "")
+    if ct["n"] == 0 {
+        out = push(out, "No cost data recorded.")
+    } else {
+        out = push(out, "Total recorded cost: " + to_string(ct["total"]) + " (across " + to_string(ct["n"]) + " run(s)).")
+    }
+    out = push(out, "")
+
+    out = push(out, "## Runs")
+    out = push(out, "")
+    out = push(out, md_row(["ID", "Task", "Provider", "Model", "Status", "Verdict", "Changed files", "Follow-ups", "Cost"]))
+    out = push(out, md_row(["---", "---", "---", "---", "---", "---", "---:", "---:", "---:"]))
+    out = append_run_rows(out, records)
+    out = push(out, "")
+
+    out = push(out, "## Runs by task")
+    out = push(out, "")
+    out = append_runs_by_task(out, records)
+
+    out = push(out, "## Follow-ups")
+    out = push(out, "")
+    out = append_grouped(out, records, "followups")
+
+    out = push(out, "## Notes")
+    out = push(out, "")
+    out = append_grouped(out, records, "notes")
+
+    return join(out, "\n")
+}
+
+# Append one markdown table row per run.
+func append_run_rows(out, records) {
+    mut acc := out
+    mut i := 0
+    while i < len(records) {
+        r := records[i]
+        acc = push(acc, md_row([
+            display(r["id"]),
+            display(r["task_name"]),
+            display(r["provider"]),
+            display(r["model"]),
+            display(r["status"]),
+            display_or(r["verdict"], "-"),
+            to_string(changed_file_count(r)),
+            to_string(followup_count(r)),
+            cost_label(r)
+        ]))
+        i = i + 1
+    }
+    return acc
+}
+
+# Append a "### task" section listing the runs under each distinct task.
+func append_runs_by_task(out, records) {
+    mut acc := out
+    tasks := unique_tasks(records)
+    mut ti := 0
+    while ti < len(tasks) {
+        task := tasks[ti]
+        acc = push(acc, "### " + task)
+        acc = push(acc, "")
+        mut ri := 0
+        while ri < len(records) {
+            r := records[ri]
+            if "${r["task_name"]}" == task {
+                acc = push(acc, "- " + display(r["id"]) + " — " + display(r["status"]) + " (" + display(r["model"]) + ")")
+            }
+            ri = ri + 1
+        }
+        acc = push(acc, "")
+        ti = ti + 1
+    }
+    return acc
+}
+
+# Append "### run-id" sections for a list-valued field (followups / notes),
+# skipping runs that have none. Prints "None." when no run has any.
+func append_grouped(out, records, field) {
+    mut acc := out
+    mut any := false
+    mut i := 0
+    while i < len(records) {
+        r := records[i]
+        items := r[field]
+        if len(items) > 0 {
+            any = true
+            acc = push(acc, "### " + display(r["id"]))
+            acc = push(acc, "")
+            mut j := 0
+            while j < len(items) {
+                acc = push(acc, "- " + entry_text(items[j]))
+                j = j + 1
+            }
+            acc = push(acc, "")
+        }
+        i = i + 1
+    }
+    if any == false {
+        acc = push(acc, "None.")
+        acc = push(acc, "")
+    }
+    return acc
+}
+
+# Bare text of an entry, dropping the timestamp prefix for compact markdown.
+func entry_text(item) {
+    if type(item) == "dict" {
+        return display_or(item["text"], "")
+    }
+    return "${item}"
+}
+
+# Distinct task names in first-seen order.
+func unique_tasks(records) {
+    mut out := []
+    mut i := 0
+    while i < len(records) {
+        name := "${records[i]["task_name"]}"
+        if includes(out, name) == false {
+            out = push(out, name)
+        }
+        i = i + 1
+    }
+    return out
+}
+
+func includes(arr, value) {
+    mut i := 0
+    while i < len(arr) {
+        if arr[i] == value {
+            return true
+        }
+        i = i + 1
+    }
+    return false
+}

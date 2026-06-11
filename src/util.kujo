@@ -1,0 +1,89 @@
+# RunLedger :: util
+#
+# Small, dependency-free helpers shared across the tool: slugs, time
+# formatting, padding for tables, and safe value display. Kept deliberately
+# boring so the rest of the codebase can rely on it without surprises.
+
+# Lowercase a string and keep only [a-z0-9-], collapsing any run of other
+# characters into a single hyphen. Unlike the builtin `slugify`, this preserves
+# hyphens and digits so model names like "claude-opus-4-8" stay readable.
+export func slug(text) {
+    lowered := to_lower(text)
+    chars := "abcdefghijklmnopqrstuvwxyz0123456789"
+    mut out := ""
+    mut prev_dash := true
+    mut i := 0
+    n := len(lowered)
+    while i < n {
+        ch := substring(lowered, i, i + 1)
+        if contains(chars, ch) == 1 {
+            out = out + ch
+            prev_dash = false
+        } else {
+            if prev_dash == false {
+                out = out + "-"
+                prev_dash = true
+            }
+        }
+        i = i + 1
+    }
+    # strip any trailing hyphen(s) left by trailing non-slug characters
+    while len(out) > 0 && substring(out, len(out) - 1, len(out)) == "-" {
+        out = substring(out, 0, len(out) - 1)
+    }
+    if out == "" {
+        return "x"
+    }
+    return out
+}
+
+# Current time as an ISO-8601 UTC timestamp, e.g. 2026-05-29T17:08:42Z.
+export func iso_now() {
+    return format_date(now(), "YYYY-MM-DDTHH:mm:ssZ")
+}
+
+# Current calendar date in UTC, e.g. 2026-05-29.
+export func today_utc() {
+    return format_date(now(), "YYYY-MM-DD")
+}
+
+# Zero-pad an integer to `width` digits (used for run sequence numbers).
+export func pad_int(value, width) {
+    s := to_string(value)
+    mut out := s
+    while len(out) < width {
+        out = "0" + out
+    }
+    return out
+}
+
+# Right-pad a string with spaces to `width` for fixed-width table columns.
+# Strings longer than width are returned unchanged (no truncation surprises).
+export func pad_right(text, width) {
+    mut out := text
+    while len(out) < width {
+        out = out + " "
+    }
+    return out
+}
+
+# Display a value for human-readable output, mapping null to a dash.
+export func display(value) {
+    if type(value) == "null" {
+        return "-"
+    }
+    return "${value}"
+}
+
+# Display a value, substituting a caller-provided fallback when null.
+export func display_or(value, fallback) {
+    if type(value) == "null" {
+        return fallback
+    }
+    return "${value}"
+}
+
+# Truthiness for the 1/0 predicate builtins (contains/has_key/...).
+export func truthy(flag) {
+    return flag == 1 || flag == true
+}

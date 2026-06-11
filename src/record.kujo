@@ -1,0 +1,93 @@
+# RunLedger :: record
+#
+# The run record is the single unit of storage. This module owns its shape,
+# its default/empty values, and validation of the small set of enumerated
+# fields (status). Everything is a plain dict so it serializes directly to JSON.
+
+from src.util import iso_now
+
+# Allowed run statuses. `in_progress` is the implicit start state; the rest are
+# terminal verdicts a human assigns when finishing a run.
+export func valid_statuses() {
+    return ["in_progress", "pass", "partial", "fail", "abandoned"]
+}
+
+# Return true if `status` is one of the allowed statuses.
+export func is_valid_status(status) {
+    for s in valid_statuses() {
+        if s == status {
+            return true
+        }
+    }
+    return false
+}
+
+# A fresh, empty usage block. All token counts start null (unknown), not zero,
+# so reports can distinguish "no data" from "genuinely zero".
+export func empty_usage() {
+    return {
+        "input_tokens": null,
+        "output_tokens": null,
+        "cache_read_tokens": null,
+        "cache_write_tokens": null
+    }
+}
+
+# A fresh, empty cost block. Currency defaults to USD; amounts start null.
+export func empty_cost() {
+    return {
+        "currency": "USD",
+        "input_cost": null,
+        "output_cost": null,
+        "cache_cost": null,
+        "total_cost": null
+    }
+}
+
+# Build a new run record. `id` and metadata are supplied by the caller (the
+# storage layer mints the id, the CLI supplies provider/model/task/etc.).
+# Git fields default to null and are filled in defensively by the git layer.
+export func new_record(id, provider, model, task_name, prompt_file, repo_path) {
+    ts := iso_now()
+    return {
+        "id": id,
+        "created_at": ts,
+        "updated_at": ts,
+        "status": "in_progress",
+        "provider": provider,
+        "model": model,
+        "task_name": task_name,
+        "prompt_file": prompt_file,
+        "repo_path": repo_path,
+        "start_commit": null,
+        "end_commit": null,
+        "git_dirty_start": null,
+        "git_dirty_end": null,
+        "changed_files": [],
+        "commands": [],
+        "tests": [],
+        "usage": empty_usage(),
+        "cost": empty_cost(),
+        "verdict": null,
+        "followups": [],
+        "notes": []
+    }
+}
+
+# Count the changed files recorded on a run, tolerating a null/missing field.
+export func changed_file_count(record) {
+    files := record["changed_files"]
+    if type(files) == "null" {
+        return 0
+    }
+    return len(files)
+}
+
+# Count the follow-up items recorded on a run.
+export func followup_count(record) {
+    items := record["followups"]
+    if type(items) == "null" {
+        return 0
+    }
+    return len(items)
+}

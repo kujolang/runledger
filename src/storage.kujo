@@ -1,0 +1,285 @@
+# RunLedger :: storage
+#
+# Local, file-backed persistence. Each run is one pretty-printed JSON file under
+# <ledger_dir>/runs/<id>.json. There is no database and no global state: every
+# function takes the ledger directory explicitly so callers stay in control of
+# where the ledger lives (default ./.runledger, overridable via CLI/env).
+
+from src.util import slug, today_utc, pad_int, truthy
+from src.record import empty_usage, empty_cost
+
+# Path to the directory holding individual run files.
+export func runs_dir(ledger_dir) {
+    return join_path(ledger_dir, "runs")
+}
+
+# Full path to a single run's JSON file.
+export func run_path(ledger_dir, id) {
+    return join_path(runs_dir(ledger_dir), id + ".json")
+}
+
+# Quote a path for safe inclusion in shell test commands.
+func shq(path) {
+    escaped := replace_str(path, "'", "'\\''")
+    return "'" + escaped + "'"
+}
+
+# Create a directory tree one segment at a time.
+func ensure_dir_tree(path) {
+    if path == "" || path == "." {
+        return
+    }
+    parts := split(path, "/")
+    mut cur := ""
+    if starts_with(path, "/") {
+        cur = "/"
+    }
+    mut i := 0
+    while i < len(parts) {
+        part := parts[i]
+        if part != "" && part != "." {
+            if cur == "/" {
+                cur = "/" + part
+            } else if cur == "" {
+                cur = part
+            } else {
+                cur = cur + "/" + part
+            }
+            if path_is_dir(cur) == false {
+                create_dir(cur)
+            }
+        }
+        i = i + 1
+    }
+}
+
+# Parent directory of a path.
+func parent_dir(path) {
+    mut i := len(path) - 1
+    while i >= 0 {
+        if substring(path, i, i + 1) == "/" {
+            if i == 0 {
+                return "/"
+            }
+            return substring(path, 0, i)
+        }
+        i = i - 1
+    }
+    return "."
+}
+
+# Write `content` to `path` atomically within the same directory by writing to a
+# temporary sibling path and renaming into place.
+export func write_atomic_text(path, content) {
+    ensure_dir_tree(parent_dir(path))
+    tmp := path + ".tmp-" + to_string(now())
+    if file_exists(tmp) {
+        delete_file(tmp)
+    }
+    write_file(tmp, content)
+    rename_file(tmp, path)
+}
+
+# Create the ledger directory tree if it does not already exist. Safe to call
+# repeatedly. Returns the runs directory path.
+export func ensure_ledger(ledger_dir) {
+    if path_is_dir(ledger_dir) == false {
+        create_dir(ledger_dir)
+    }
+    rd := runs_dir(ledger_dir)
+    if path_is_dir(rd) == false {
+        create_dir(rd)
+    }
+    return rd
+}
+
+# True if a run with this id already exists on disk.
+export func exists(ledger_dir, id) {
+    return file_exists(run_path(ledger_dir, id))
+}
+
+# Mint a stable, human-readable id of the form
+#   YYYY-MM-DD-<model-slug>-<task-slug>-NNN
+# where NNN is the next free 3-digit sequence for that exact prefix. This keeps
+# ids sortable, readable, and collision-free within a ledger.
+export func generate_id(ledger_dir, model, task_name) {
+    prefix := today_utc() + "-" + slug(model) + "-" + slug(task_name)
+    mut seq := 1
+    while seq < 1000 {
+        candidate := prefix + "-" + pad_int(seq, 3)
+        if exists(ledger_dir, candidate) == false {
+            return candidate
+        }
+        seq = seq + 1
+    }
+    # Extremely unlikely fallback: append a timestamp to stay unique.
+    return prefix + "-" + to_string(now())
+}
+
+# Persist a brand-new record. Refuses to clobber an existing file so runs are
+# never silently overwritten.
+export func save_new(ledger_dir, record) {
+    ensure_ledger(ledger_dir)
+    path := run_path(ledger_dir, record["id"])
+    if file_exists(path) {
+        return {"error": "run already exists: " + record["id"]}
+    }
+    write_atomic_text(path, to_json_pretty(record))
+    return {"ok": path}
+}
+
+# Persist updates to an existing record (replaces in place).
+export func save_update(ledger_dir, record) {
+    ensure_ledger(ledger_dir)
+    path := run_path(ledger_dir, record["id"])
+    write_atomic_text(path, to_json_pretty(record))
+    return {"ok": path}
+}
+
+# Load one record by id. Returns null if it does not exist, or an
+# {"error": ...} dict if the file is present but unreadable/corrupt.
+export func load(ledger_dir, id) {
+    path := run_path(ledger_dir, id)
+    if file_exists(path) == false {
+        return null
+    }
+    if path_is_dir(path) {
+        return {"error": "run path is a directory: " + path}
+    }
+    r := execute_status("test -r " + shq(path))
+    if r.exitcode != 0 {
+        return {"error": "cannot read run file: " + path}
+    }
+    raw := read_file(path)
+    parsed := parse_json(raw)
+    if type(parsed) == "Error" {
+        return {"error": "corrupt run file: " + path}
+    }
+    if type(parsed) != "dict" {
+        return {"error": "invalid run file shape: " + path}
+    }
+    return normalize_record(parsed)
+}
+
+# Load every run in the ledger, sorted by id (which is chronological by date
+# prefix). Skips unreadable files rather than failing the whole listing.
+export func list_records(ledger_dir) {
+    rd := runs_dir(ledger_dir)
+    mut out := []
+    if path_is_dir(rd) == false {
+        return out
+    }
+    entries := list_dir(rd)
+    mut names := []
+    mut e := 0
+    while e < len(entries) {
+        name := entries[e]
+        if ends_with(name, ".json") {
+            names = push(names, name)
+        }
+        e = e + 1
+    }
+    names = sort(names)
+    mut k := 0
+    while k < len(names) {
+        name := names[k]
+        id := substring(name, 0, len(name) - 5)
+        rec := load(ledger_dir, id)
+        if type(rec) == "dict" {
+            if truthy(has_key(rec, "id")) {
+                out = push(out, rec)
+            }
+        }
+        k = k + 1
+    }
+    return out
+}
+
+func normalize_record(record) {
+    mut rec := record
+    rec = put_default(rec, "id", null)
+    rec = put_default(rec, "created_at", null)
+    rec = put_default(rec, "updated_at", null)
+    rec = put_default(rec, "status", "in_progress")
+    rec = put_default(rec, "provider", null)
+    rec = put_default(rec, "model", null)
+    rec = put_default(rec, "task_name", null)
+    rec = put_default(rec, "prompt_file", null)
+    rec = put_default(rec, "repo_path", null)
+    rec = put_default(rec, "start_commit", null)
+    rec = put_default(rec, "end_commit", null)
+    rec = put_default(rec, "git_dirty_start", null)
+    rec = put_default(rec, "git_dirty_end", null)
+    rec = put_default(rec, "changed_files", [])
+    rec = put_default(rec, "commands", [])
+    rec = put_default(rec, "tests", [])
+    rec = put_default(rec, "usage", empty_usage())
+    rec = put_default(rec, "cost", empty_cost())
+    rec = put_default(rec, "verdict", null)
+    rec = put_default(rec, "followups", [])
+    rec = put_default(rec, "notes", [])
+    rec["changed_files"] := normalize_list(rec["changed_files"])
+    rec["commands"] := normalize_list(rec["commands"])
+    rec["tests"] := normalize_list(rec["tests"])
+    rec["followups"] := normalize_list(rec["followups"])
+    rec["notes"] := normalize_list(rec["notes"])
+    rec["usage"] := normalize_usage(rec["usage"])
+    rec["cost"] := normalize_cost(rec["cost"])
+    return rec
+}
+
+func put_default(target, key, fallback) {
+    if has_key(target, key) == 0 {
+        target[key] := fallback
+    }
+    return target
+}
+
+func normalize_list(value) {
+    t := type(value)
+    if t == "array" || t == "list" {
+        return value
+    }
+    return []
+}
+
+func normalize_usage(value) {
+    usage_out := empty_usage()
+    if type(value) == "dict" {
+        if has_key(value, "input_tokens") == 1 {
+            usage_out["input_tokens"] := value["input_tokens"]
+        }
+        if has_key(value, "output_tokens") == 1 {
+            usage_out["output_tokens"] := value["output_tokens"]
+        }
+        if has_key(value, "cache_read_tokens") == 1 {
+            usage_out["cache_read_tokens"] := value["cache_read_tokens"]
+        }
+        if has_key(value, "cache_write_tokens") == 1 {
+            usage_out["cache_write_tokens"] := value["cache_write_tokens"]
+        }
+    }
+    return usage_out
+}
+
+func normalize_cost(value) {
+    cost_out := empty_cost()
+    if type(value) == "dict" {
+        if has_key(value, "currency") == 1 {
+            cost_out["currency"] := value["currency"]
+        }
+        if has_key(value, "input_cost") == 1 {
+            cost_out["input_cost"] := value["input_cost"]
+        }
+        if has_key(value, "output_cost") == 1 {
+            cost_out["output_cost"] := value["output_cost"]
+        }
+        if has_key(value, "cache_cost") == 1 {
+            cost_out["cache_cost"] := value["cache_cost"]
+        }
+        if has_key(value, "total_cost") == 1 {
+            cost_out["total_cost"] := value["total_cost"]
+        }
+    }
+    return cost_out
+}
