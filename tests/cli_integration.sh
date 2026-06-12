@@ -35,6 +35,44 @@ REPO="$TMPROOT/repo"
 PLAIN="$TMPROOT/plain"
 mkdir -p "$REPO" "$PLAIN"
 
+HELP_OUT="$(KUJO="$KUJO_BIN" "$RUNLEDGER" help)"
+EXPECTED_HELP="$(cat <<'EOF'
+runledger 0.1.0 — a local ledger for AI-agent build runs
+
+Usage: runledger <command> [arguments]
+
+Commands:
+  start      Begin a new run record
+             usage: runledger start --model <m> --provider <p> --task <t> [--prompt <file>] [--repo <path>]
+  finish     Finalize a run (status, verdict, end git state)
+             usage: runledger finish <run-id> --status <pass|partial|fail|abandoned> --verdict "text"
+  list       List recorded runs in a compact table
+             usage: runledger list [--json]
+  show       Show one run (add --json for the raw record)
+             usage: runledger show <run-id> [--json]
+  note       Add a timestamped note to a run
+             usage: runledger note <run-id> "note text"
+  followup   Add a follow-up item to a run
+             usage: runledger followup <run-id> "follow-up text"
+  usage      Record token usage for a run
+             usage: runledger usage <run-id> [--input N] [--output N] [--cache-read N] [--cache-write N]
+  cost       Record cost for a run
+             usage: runledger cost <run-id> [--total N] [--currency CODE] [--input N] [--output N] [--cache N]
+  compare    Compare runs in the ledger
+             usage: runledger compare [--task <name>] [--json]
+  report     Generate a markdown report (--output <file> to save)
+             usage: runledger report [--task <name>] [--output <file>]
+  help       Show this help
+  version    Show version
+
+Global:
+  --ledger <dir>   Ledger location (default ./.runledger, or $RUNLEDGER_DIR)
+
+Run scripts via: kujo run runledger.kujo -- <command> [arguments]
+EOF
+)"
+[[ "$HELP_OUT" == "$EXPECTED_HELP" ]] || fail "help output changed unexpectedly"
+
 git -C "$REPO" init -q
 git -C "$REPO" config user.email test@example.com
 git -C "$REPO" config user.name runledger-test

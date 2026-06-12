@@ -18,6 +18,60 @@ from src.render import render_list, render_show, render_compare, render_report
 VERSION := "0.1.0"
 
 # ---------------------------------------------------------------------------
+# User-facing text
+# ---------------------------------------------------------------------------
+
+func usage(command) {
+    if command == "start" {
+        return "usage: runledger start --model <m> --provider <p> --task <t> [--prompt <file>] [--repo <path>] [--ledger <dir>]"
+    }
+    if command == "finish" {
+        return "usage: runledger finish <run-id> --status <pass|partial|fail|abandoned> --verdict \"text\" [--notes <text>] [--repo <path>] [--ledger <dir>]"
+    }
+    if command == "list" {
+        return "usage: runledger list [--json] [--ledger <dir>]"
+    }
+    if command == "show" {
+        return "usage: runledger show <run-id> [--json] [--ledger <dir>]"
+    }
+    if command == "note" {
+        return "usage: runledger note <run-id> \"note text\" [--ledger <dir>]"
+    }
+    if command == "note-short" {
+        return "usage: runledger note <run-id> \"note text\""
+    }
+    if command == "followup" {
+        return "usage: runledger followup <run-id> \"follow-up text\" [--ledger <dir>]"
+    }
+    if command == "followup-short" {
+        return "usage: runledger followup <run-id> \"follow-up text\""
+    }
+    if command == "usage" {
+        return "usage: runledger usage <run-id> [--input N] [--output N] [--cache-read N] [--cache-write N] [--ledger <dir>]"
+    }
+    if command == "cost" {
+        return "usage: runledger cost <run-id> [--total N] [--currency CODE] [--input N] [--output N] [--cache N] [--ledger <dir>]"
+    }
+    if command == "compare" {
+        return "usage: runledger compare [--task <name>] [--json] [--ledger <dir>]"
+    }
+    return "usage: runledger report [--task <name>] [--output <file>] [--ledger <dir>]"
+}
+
+func usage_error(text) {
+    print(text)
+    return 2
+}
+
+func print_lines(lines) {
+    mut i := 0
+    while i < len(lines) {
+        print(lines[i])
+        i = i + 1
+    }
+}
+
+# ---------------------------------------------------------------------------
 # Argument parsing
 # ---------------------------------------------------------------------------
 
@@ -125,20 +179,17 @@ func cmd_start(tokens) {
     parsed := parse_args(tokens, [])
     ledger := resolve_ledger(parsed)
     if type(ledger) == "null" {
-        print("usage: runledger start --model <m> --provider <p> --task <t> [--prompt <file>] [--repo <path>] [--ledger <dir>]")
-        return 2
+        return usage_error(usage("start"))
     }
     model := flag(parsed, "model")
     provider := flag(parsed, "provider")
     task := flag(parsed, "task")
     if type(model) == "null" || trim(model) == "" || type(provider) == "null" || trim(provider) == "" || type(task) == "null" || trim(task) == "" {
-        print("usage: runledger start --model <m> --provider <p> --task <t> [--prompt <file>] [--repo <path>] [--ledger <dir>]")
-        return 2
+        return usage_error(usage("start"))
     }
     repo := flag_or(parsed, "repo", ".")
     if trim(repo) == "" {
-        print("usage: runledger start --model <m> --provider <p> --task <t> [--prompt <file>] [--repo <path>] [--ledger <dir>]")
-        return 2
+        return usage_error(usage("start"))
     }
     prompt := flag(parsed, "prompt")
 
@@ -155,12 +206,14 @@ func cmd_start(tokens) {
         return 1
     }
 
-    print("Started run: " + id)
-    print("  storage:      " + run_path(ledger, id))
-    print("  repo:         " + repo)
-    print("  start commit: " + start_commit_label(rec))
-    print("")
-    print("Next: runledger finish " + id + " --status <pass|partial|fail|abandoned> --verdict \"...\"")
+    print_lines([
+        "Started run: " + id,
+        "  storage:      " + run_path(ledger, id),
+        "  repo:         " + repo,
+        "  start commit: " + start_commit_label(rec),
+        "",
+        "Next: runledger finish " + id + " --status <pass|partial|fail|abandoned> --verdict \"...\""
+    ])
     return 0
 }
 
@@ -176,13 +229,11 @@ func cmd_finish(tokens) {
     parsed := parse_args(tokens, [])
     ledger := resolve_ledger(parsed)
     if type(ledger) == "null" {
-        print("usage: runledger finish <run-id> --status <pass|partial|fail|abandoned> --verdict \"text\" [--notes <text>] [--repo <path>] [--ledger <dir>]")
-        return 2
+        return usage_error(usage("finish"))
     }
     id := first_positional(parsed)
     if type(id) == "null" || id == "" {
-        print("usage: runledger finish <run-id> --status <pass|partial|fail|abandoned> --verdict \"text\" [--notes <text>] [--repo <path>] [--ledger <dir>]")
-        return 2
+        return usage_error(usage("finish"))
     }
     rec := require_record(ledger, id, "finish")
     if type(rec) == "null" {
@@ -191,8 +242,7 @@ func cmd_finish(tokens) {
 
     status := flag(parsed, "status")
     if type(status) == "null" || trim(status) == "" {
-        print("usage: runledger finish <run-id> --status <pass|partial|fail|abandoned> --verdict \"text\" [--notes <text>] [--repo <path>] [--ledger <dir>]")
-        return 2
+        return usage_error(usage("finish"))
     }
     if is_valid_status(status) == false {
         print("error: invalid status '" + status + "'. Allowed: " + join(valid_statuses(), ", "))
@@ -206,15 +256,13 @@ func cmd_finish(tokens) {
 
     verdict := flag(parsed, "verdict")
     if type(verdict) == "null" || trim(verdict) == "" {
-        print("usage: runledger finish <run-id> --status <pass|partial|fail|abandoned> --verdict \"text\" [--notes <text>] [--repo <path>] [--ledger <dir>]")
-        return 2
+        return usage_error(usage("finish"))
     }
     rec["verdict"] := verdict
 
     notes := flag(parsed, "notes")
     if type(notes) != "null" && trim(notes) == "" {
-        print("usage: runledger finish <run-id> --status <pass|partial|fail|abandoned> --verdict \"text\" [--notes <text>] [--repo <path>] [--ledger <dir>]")
-        return 2
+        return usage_error(usage("finish"))
     }
     if type(notes) != "null" {
         rec["notes"] := push(rec["notes"], {"at": iso_now(), "text": notes})
@@ -228,10 +276,12 @@ func cmd_finish(tokens) {
 
     touch(rec)
     save_update(ledger, rec)
-    print("Finished run: " + id)
-    print("  status:       " + "${rec["status"]}")
-    print("  end commit:   " + start_or_dash(rec["end_commit"]))
-    print("  changed files: " + to_string(len(rec["changed_files"])))
+    print_lines([
+        "Finished run: " + id,
+        "  status:       " + "${rec["status"]}",
+        "  end commit:   " + start_or_dash(rec["end_commit"]),
+        "  changed files: " + to_string(len(rec["changed_files"]))
+    ])
     return 0
 }
 
@@ -246,8 +296,7 @@ func cmd_list(tokens) {
     parsed := parse_args(tokens, ["json"])
     ledger := resolve_ledger(parsed)
     if type(ledger) == "null" {
-        print("usage: runledger list [--json] [--ledger <dir>]")
-        return 2
+        return usage_error(usage("list"))
     }
     recs := list_records(ledger)
     if has_flag(parsed, "json") {
@@ -262,13 +311,11 @@ func cmd_show(tokens) {
     parsed := parse_args(tokens, ["json"])
     ledger := resolve_ledger(parsed)
     if type(ledger) == "null" {
-        print("usage: runledger show <run-id> [--json] [--ledger <dir>]")
-        return 2
+        return usage_error(usage("show"))
     }
     id := first_positional(parsed)
     if type(id) == "null" || id == "" {
-        print("usage: runledger show <run-id> [--json] [--ledger <dir>]")
-        return 2
+        return usage_error(usage("show"))
     }
     rec := require_record(ledger, id, "show")
     if type(rec) == "null" {
@@ -286,13 +333,11 @@ func cmd_note(tokens) {
     parsed := parse_args(tokens, [])
     ledger := resolve_ledger(parsed)
     if type(ledger) == "null" {
-        print("usage: runledger note <run-id> \"note text\" [--ledger <dir>]")
-        return 2
+        return usage_error(usage("note"))
     }
     id := first_positional(parsed)
     if type(id) == "null" || id == "" {
-        print("usage: runledger note <run-id> \"note text\"")
-        return 2
+        return usage_error(usage("note-short"))
     }
     rec := require_record(ledger, id, "note")
     if type(rec) == "null" {
@@ -300,8 +345,7 @@ func cmd_note(tokens) {
     }
     text := second_positional(parsed)
     if type(text) == "null" || text == "" {
-        print("usage: runledger note <run-id> \"note text\"")
-        return 2
+        return usage_error(usage("note-short"))
     }
     rec["notes"] := push(rec["notes"], {"at": iso_now(), "text": text})
     touch(rec)
@@ -314,13 +358,11 @@ func cmd_followup(tokens) {
     parsed := parse_args(tokens, [])
     ledger := resolve_ledger(parsed)
     if type(ledger) == "null" {
-        print("usage: runledger followup <run-id> \"follow-up text\" [--ledger <dir>]")
-        return 2
+        return usage_error(usage("followup"))
     }
     id := first_positional(parsed)
     if type(id) == "null" || id == "" {
-        print("usage: runledger followup <run-id> \"follow-up text\"")
-        return 2
+        return usage_error(usage("followup-short"))
     }
     rec := require_record(ledger, id, "followup")
     if type(rec) == "null" {
@@ -328,8 +370,7 @@ func cmd_followup(tokens) {
     }
     text := second_positional(parsed)
     if type(text) == "null" || text == "" {
-        print("usage: runledger followup <run-id> \"follow-up text\"")
-        return 2
+        return usage_error(usage("followup-short"))
     }
     rec["followups"] := push(rec["followups"], {"at": iso_now(), "text": text})
     touch(rec)
@@ -342,13 +383,11 @@ func cmd_usage(tokens) {
     parsed := parse_args(tokens, [])
     ledger := resolve_ledger(parsed)
     if type(ledger) == "null" {
-        print("usage: runledger usage <run-id> [--input N] [--output N] [--cache-read N] [--cache-write N] [--ledger <dir>]")
-        return 2
+        return usage_error(usage("usage"))
     }
     id := first_positional(parsed)
     if type(id) == "null" || id == "" {
-        print("usage: runledger usage <run-id> [--input N] [--output N] [--cache-read N] [--cache-write N] [--ledger <dir>]")
-        return 2
+        return usage_error(usage("usage"))
     }
     rec := require_record(ledger, id, "usage")
     if type(rec) == "null" {
@@ -404,13 +443,11 @@ func cmd_cost(tokens) {
     parsed := parse_args(tokens, [])
     ledger := resolve_ledger(parsed)
     if type(ledger) == "null" {
-        print("usage: runledger cost <run-id> [--total N] [--currency CODE] [--input N] [--output N] [--cache N] [--ledger <dir>]")
-        return 2
+        return usage_error(usage("cost"))
     }
     id := first_positional(parsed)
     if type(id) == "null" || id == "" {
-        print("usage: runledger cost <run-id> [--total N] [--currency CODE] [--input N] [--output N] [--cache N] [--ledger <dir>]")
-        return 2
+        return usage_error(usage("cost"))
     }
     rec := require_record(ledger, id, "cost")
     if type(rec) == "null" {
@@ -422,8 +459,7 @@ func cmd_cost(tokens) {
     }
     currency := flag(parsed, "currency")
     if type(currency) != "null" && trim(currency) == "" {
-        print("usage: runledger cost <run-id> [--total N] [--currency CODE] [--input N] [--output N] [--cache N] [--ledger <dir>]")
-        return 2
+        return usage_error(usage("cost"))
     }
     if type(currency) != "null" {
         cost["currency"] := currency
@@ -516,8 +552,7 @@ func cmd_compare(tokens) {
     parsed := parse_args(tokens, ["json"])
     ledger := resolve_ledger(parsed)
     if type(ledger) == "null" {
-        print("usage: runledger compare [--task <name>] [--json] [--ledger <dir>]")
-        return 2
+        return usage_error(usage("compare"))
     }
     recs := list_records(ledger)
     task := flag(parsed, "task")
@@ -546,8 +581,7 @@ func cmd_report(tokens) {
     parsed := parse_args(tokens, [])
     ledger := resolve_ledger(parsed)
     if type(ledger) == "null" {
-        print("usage: runledger report [--task <name>] [--output <file>] [--ledger <dir>]")
-        return 2
+        return usage_error(usage("report"))
     }
     recs := list_records(ledger)
     task := flag(parsed, "task")
@@ -586,38 +620,40 @@ func second_positional(parsed) {
 # ---------------------------------------------------------------------------
 
 func print_help() {
-    print("runledger " + VERSION + " — a local ledger for AI-agent build runs")
-    print("")
-    print("Usage: runledger <command> [arguments]")
-    print("")
-    print("Commands:")
-    print("  start      Begin a new run record")
-    print("             usage: runledger start --model <m> --provider <p> --task <t> [--prompt <file>] [--repo <path>]")
-    print("  finish     Finalize a run (status, verdict, end git state)")
-    print("             usage: runledger finish <run-id> --status <pass|partial|fail|abandoned> --verdict \"text\"")
-    print("  list       List recorded runs in a compact table")
-    print("             usage: runledger list [--json]")
-    print("  show       Show one run (add --json for the raw record)")
-    print("             usage: runledger show <run-id> [--json]")
-    print("  note       Add a timestamped note to a run")
-    print("             usage: runledger note <run-id> \"note text\"")
-    print("  followup   Add a follow-up item to a run")
-    print("             usage: runledger followup <run-id> \"follow-up text\"")
-    print("  usage      Record token usage for a run")
-    print("             usage: runledger usage <run-id> [--input N] [--output N] [--cache-read N] [--cache-write N]")
-    print("  cost       Record cost for a run")
-    print("             usage: runledger cost <run-id> [--total N] [--currency CODE] [--input N] [--output N] [--cache N]")
-    print("  compare    Compare runs in the ledger")
-    print("             usage: runledger compare [--task <name>] [--json]")
-    print("  report     Generate a markdown report (--output <file> to save)")
-    print("             usage: runledger report [--task <name>] [--output <file>]")
-    print("  help       Show this help")
-    print("  version    Show version")
-    print("")
-    print("Global:")
-    print("  --ledger <dir>   Ledger location (default ./.runledger, or $RUNLEDGER_DIR)")
-    print("")
-    print("Run scripts via: kujo run runledger.kujo -- <command> [arguments]")
+    print_lines([
+        "runledger " + VERSION + " — a local ledger for AI-agent build runs",
+        "",
+        "Usage: runledger <command> [arguments]",
+        "",
+        "Commands:",
+        "  start      Begin a new run record",
+        "             usage: runledger start --model <m> --provider <p> --task <t> [--prompt <file>] [--repo <path>]",
+        "  finish     Finalize a run (status, verdict, end git state)",
+        "             usage: runledger finish <run-id> --status <pass|partial|fail|abandoned> --verdict \"text\"",
+        "  list       List recorded runs in a compact table",
+        "             usage: runledger list [--json]",
+        "  show       Show one run (add --json for the raw record)",
+        "             usage: runledger show <run-id> [--json]",
+        "  note       Add a timestamped note to a run",
+        "             usage: runledger note <run-id> \"note text\"",
+        "  followup   Add a follow-up item to a run",
+        "             usage: runledger followup <run-id> \"follow-up text\"",
+        "  usage      Record token usage for a run",
+        "             usage: runledger usage <run-id> [--input N] [--output N] [--cache-read N] [--cache-write N]",
+        "  cost       Record cost for a run",
+        "             usage: runledger cost <run-id> [--total N] [--currency CODE] [--input N] [--output N] [--cache N]",
+        "  compare    Compare runs in the ledger",
+        "             usage: runledger compare [--task <name>] [--json]",
+        "  report     Generate a markdown report (--output <file> to save)",
+        "             usage: runledger report [--task <name>] [--output <file>]",
+        "  help       Show this help",
+        "  version    Show version",
+        "",
+        "Global:",
+        "  --ledger <dir>   Ledger location (default ./.runledger, or $RUNLEDGER_DIR)",
+        "",
+        "Run scripts via: kujo run runledger.kujo -- <command> [arguments]"
+    ])
 }
 
 # Entry point. `argv` is the user argument list (args()).
