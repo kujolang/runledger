@@ -17,6 +17,16 @@ This repo is a small local CLI in Kujo for recording AI-agent run receipts.
   - `tests/cli_integration.sh` CLI integration checks
   - `tests/run.sh` runs both
 
+## Canonical examples and search hygiene
+
+- Canonical copyable examples: `README.md` and `examples/build-tool-x.md`.
+- Generated-output example: `examples/RUNLEDGER_REPORT.example.md`; use it for
+  report shape, not as a source-code style guide.
+- Historical review artifacts: `BUG_HUNT_REPORT.md` and
+  `CODEX_REVIEW_RUNLEDGER.md`.
+- Exclude generated/bulk paths from broad sweeps unless the task targets them:
+  `.runledger/`, temp ledgers, and generated report outputs.
+
 ## Runtime requirement
 
 RunLedger needs the Kujo language runtime (`kujo --help` should list `run`).

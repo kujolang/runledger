@@ -104,31 +104,40 @@ runledger report --output RUNLEDGER_REPORT.md
 ## Comparing Claude, Codex, and DeepSeek
 
 Give each agent the same prompt, then record each attempt against the same task
-name so they line up in `compare` and `report`:
+name so they line up in `compare` and `report`. The helper below keeps the
+repeated command shape copyable without obscuring the lifecycle steps:
 
 ```bash
+TASK="Build Tool X"
+PROMPT="./examples/build-tool-x.md"
+
+start_run() {
+  runledger start --provider "$1" --model "$2" --task "$TASK" --prompt "$PROMPT" --repo . |
+    sed -n '1s/^Started run: //p'
+}
+
 # Claude
-id=$(runledger start --provider anthropic --model claude-opus-4-8 --task "Build Tool X" --prompt ./examples/build-tool-x.md --repo . | head -1 | sed 's/Started run: //')
+id=$(start_run anthropic claude-opus-4-8)
 # ...run the agent...
 runledger usage "$id" --input 140000 --output 22000
 runledger cost  "$id" --total 1.18
 runledger finish "$id" --status pass --verdict "clean handoff"
 
 # Codex
-id=$(runledger start --provider openai --model codex --task "Build Tool X" --prompt ./examples/build-tool-x.md --repo . | head -1 | sed 's/Started run: //')
+id=$(start_run openai codex)
 runledger usage "$id" --input 190000 --output 26000
 runledger cost  "$id" --total 0.92
 runledger followup "$id" "Add tests for JSON output"
 runledger finish "$id" --status partial --verdict "good start"
 
 # DeepSeek
-id=$(runledger start --provider deepseek --model deepseek-v3 --task "Build Tool X" --prompt ./examples/build-tool-x.md --repo . | head -1 | sed 's/Started run: //')
+id=$(start_run deepseek deepseek-v3)
 runledger usage "$id" --input 210000 --output 31000
 runledger cost  "$id" --total 0.40
 runledger finish "$id" --status fail --verdict "tests broken"
 
-runledger compare --task "Build Tool X"
-runledger report  --task "Build Tool X" --output RUNLEDGER_REPORT.md
+runledger compare --task "$TASK"
+runledger report  --task "$TASK" --output RUNLEDGER_REPORT.md
 ```
 
 ## Command reference
@@ -349,3 +358,14 @@ runledger/
     build-tool-x.md             # sample prompt
     RUNLEDGER_REPORT.example.md  # sample generated report
 ```
+
+## Contributor notes
+
+Canonical copyable examples live in this README and
+`examples/build-tool-x.md`. `examples/RUNLEDGER_REPORT.example.md` is a sample
+generated report for output shape, while `BUG_HUNT_REPORT.md` and
+`CODEX_REVIEW_RUNLEDGER.md` are historical review artifacts.
+
+For repo sweeps, exclude generated/bulk paths such as `.runledger/` and avoid
+treating generated report output as source examples unless the task explicitly
+targets report formatting.
