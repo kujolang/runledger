@@ -197,35 +197,44 @@ export func list_records(ledger_dir) {
 
 func normalize_record(record) {
     mut rec := record
-    rec = put_default(rec, "id", null)
-    rec = put_default(rec, "created_at", null)
-    rec = put_default(rec, "updated_at", null)
-    rec = put_default(rec, "status", "in_progress")
-    rec = put_default(rec, "provider", null)
-    rec = put_default(rec, "model", null)
-    rec = put_default(rec, "task_name", null)
-    rec = put_default(rec, "prompt_file", null)
-    rec = put_default(rec, "repo_path", null)
-    rec = put_default(rec, "start_commit", null)
-    rec = put_default(rec, "end_commit", null)
-    rec = put_default(rec, "git_dirty_start", null)
-    rec = put_default(rec, "git_dirty_end", null)
-    rec = put_default(rec, "changed_files", [])
-    rec = put_default(rec, "commands", [])
-    rec = put_default(rec, "tests", [])
-    rec = put_default(rec, "usage", empty_usage())
-    rec = put_default(rec, "cost", empty_cost())
-    rec = put_default(rec, "verdict", null)
-    rec = put_default(rec, "followups", [])
-    rec = put_default(rec, "notes", [])
-    rec["changed_files"] := normalize_list(rec["changed_files"])
-    rec["commands"] := normalize_list(rec["commands"])
-    rec["tests"] := normalize_list(rec["tests"])
-    rec["followups"] := normalize_list(rec["followups"])
-    rec["notes"] := normalize_list(rec["notes"])
+    rec = put_defaults(rec, [
+        {"key": "id", "fallback": null},
+        {"key": "created_at", "fallback": null},
+        {"key": "updated_at", "fallback": null},
+        {"key": "status", "fallback": "in_progress"},
+        {"key": "provider", "fallback": null},
+        {"key": "model", "fallback": null},
+        {"key": "task_name", "fallback": null},
+        {"key": "prompt_file", "fallback": null},
+        {"key": "repo_path", "fallback": null},
+        {"key": "start_commit", "fallback": null},
+        {"key": "end_commit", "fallback": null},
+        {"key": "git_dirty_start", "fallback": null},
+        {"key": "git_dirty_end", "fallback": null},
+        {"key": "changed_files", "fallback": []},
+        {"key": "commands", "fallback": []},
+        {"key": "tests", "fallback": []},
+        {"key": "usage", "fallback": empty_usage()},
+        {"key": "cost", "fallback": empty_cost()},
+        {"key": "verdict", "fallback": null},
+        {"key": "followups", "fallback": []},
+        {"key": "notes", "fallback": []}
+    ])
+    rec = normalize_list_fields(rec, ["changed_files", "commands", "tests", "followups", "notes"])
     rec["usage"] := normalize_usage(rec["usage"])
     rec["cost"] := normalize_cost(rec["cost"])
     return rec
+}
+
+func put_defaults(target, defaults) {
+    mut out := target
+    mut i := 0
+    while i < len(defaults) {
+        item := defaults[i]
+        out = put_default(out, item["key"], item["fallback"])
+        i = i + 1
+    }
+    return out
 }
 
 func put_default(target, key, fallback) {
@@ -233,6 +242,17 @@ func put_default(target, key, fallback) {
         target[key] := fallback
     }
     return target
+}
+
+func normalize_list_fields(target, keys) {
+    mut out := target
+    mut i := 0
+    while i < len(keys) {
+        key := keys[i]
+        out[key] := normalize_list(out[key])
+        i = i + 1
+    }
+    return out
 }
 
 func normalize_list(value) {
@@ -244,42 +264,36 @@ func normalize_list(value) {
 }
 
 func normalize_usage(value) {
-    usage_out := empty_usage()
-    if type(value) == "dict" {
-        if has_key(value, "input_tokens") == 1 {
-            usage_out["input_tokens"] := value["input_tokens"]
-        }
-        if has_key(value, "output_tokens") == 1 {
-            usage_out["output_tokens"] := value["output_tokens"]
-        }
-        if has_key(value, "cache_read_tokens") == 1 {
-            usage_out["cache_read_tokens"] := value["cache_read_tokens"]
-        }
-        if has_key(value, "cache_write_tokens") == 1 {
-            usage_out["cache_write_tokens"] := value["cache_write_tokens"]
-        }
-    }
-    return usage_out
+    return copy_known_fields(empty_usage(), value, [
+        "input_tokens",
+        "output_tokens",
+        "cache_read_tokens",
+        "cache_write_tokens"
+    ])
 }
 
 func normalize_cost(value) {
-    cost_out := empty_cost()
-    if type(value) == "dict" {
-        if has_key(value, "currency") == 1 {
-            cost_out["currency"] := value["currency"]
-        }
-        if has_key(value, "input_cost") == 1 {
-            cost_out["input_cost"] := value["input_cost"]
-        }
-        if has_key(value, "output_cost") == 1 {
-            cost_out["output_cost"] := value["output_cost"]
-        }
-        if has_key(value, "cache_cost") == 1 {
-            cost_out["cache_cost"] := value["cache_cost"]
-        }
-        if has_key(value, "total_cost") == 1 {
-            cost_out["total_cost"] := value["total_cost"]
-        }
+    return copy_known_fields(empty_cost(), value, [
+        "currency",
+        "input_cost",
+        "output_cost",
+        "cache_cost",
+        "total_cost"
+    ])
+}
+
+func copy_known_fields(target, source, keys) {
+    mut out := target
+    if type(source) != "dict" {
+        return out
     }
-    return cost_out
+    mut i := 0
+    while i < len(keys) {
+        key := keys[i]
+        if has_key(source, key) == 1 {
+            out[key] := source[key]
+        }
+        i = i + 1
+    }
+    return out
 }

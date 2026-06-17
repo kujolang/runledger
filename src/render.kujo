@@ -76,6 +76,16 @@ func render_row(cells, widths) {
     return join(parts, "  ")
 }
 
+func push_lines(out, lines) {
+    mut acc := out
+    mut i := 0
+    while i < len(lines) {
+        acc = push(acc, lines[i])
+        i = i + 1
+    }
+    return acc
+}
+
 # Compact ledger listing.
 export func render_list(records) {
     if len(records) == 0 {
@@ -113,48 +123,50 @@ func created_date(record) {
 # Detailed, readable single-run view (no raw JSON).
 export func render_show(record) {
     mut lines := []
-    lines = push(lines, "Run: " + display(record["id"]))
-    lines = push(lines, "  Status:     " + display(record["status"]))
-    lines = push(lines, "  Task:       " + display(record["task_name"]))
-    lines = push(lines, "  Provider:   " + display(record["provider"]))
-    lines = push(lines, "  Model:      " + display(record["model"]))
-    lines = push(lines, "  Prompt:     " + display_or(record["prompt_file"], "-"))
-    lines = push(lines, "  Repo:       " + display(record["repo_path"]))
-    lines = push(lines, "  Created:    " + display(record["created_at"]))
-    lines = push(lines, "  Updated:    " + display(record["updated_at"]))
-    lines = push(lines, "  Verdict:    " + display_or(record["verdict"], "-"))
-    lines = push(lines, "")
-    lines = push(lines, "  Git:")
-    lines = push(lines, "    start commit: " + display_or(record["start_commit"], "-"))
-    lines = push(lines, "    end commit:   " + display_or(record["end_commit"], "-"))
-    lines = push(lines, "    dirty start:  " + display(record["git_dirty_start"]))
-    lines = push(lines, "    dirty end:    " + display(record["git_dirty_end"]))
-    lines = push(lines, "    changed files (" + to_string(changed_file_count(record)) + "):")
+    lines = push_lines(lines, [
+        "Run: " + display(record["id"]),
+        "  Status:     " + display(record["status"]),
+        "  Task:       " + display(record["task_name"]),
+        "  Provider:   " + display(record["provider"]),
+        "  Model:      " + display(record["model"]),
+        "  Prompt:     " + display_or(record["prompt_file"], "-"),
+        "  Repo:       " + display(record["repo_path"]),
+        "  Created:    " + display(record["created_at"]),
+        "  Updated:    " + display(record["updated_at"]),
+        "  Verdict:    " + display_or(record["verdict"], "-"),
+        "",
+        "  Git:",
+        "    start commit: " + display_or(record["start_commit"], "-"),
+        "    end commit:   " + display_or(record["end_commit"], "-"),
+        "    dirty start:  " + display(record["git_dirty_start"]),
+        "    dirty end:    " + display(record["git_dirty_end"]),
+        "    changed files (" + to_string(changed_file_count(record)) + "):"
+    ])
     files := record["changed_files"]
     mut fi := 0
     while fi < len(files) {
         lines = push(lines, "      - " + files[fi])
         fi = fi + 1
     }
-    lines = push(lines, "")
-    lines = push(lines, "  Usage:")
+    lines = push_lines(lines, ["", "  Usage:"])
     usage := record["usage"]
-    lines = push(lines, "    input:       " + display(usage["input_tokens"]))
-    lines = push(lines, "    output:      " + display(usage["output_tokens"]))
-    lines = push(lines, "    cache read:  " + display(usage["cache_read_tokens"]))
-    lines = push(lines, "    cache write: " + display(usage["cache_write_tokens"]))
-    lines = push(lines, "  Cost: " + cost_label(record))
-    lines = push(lines, "")
-    lines = push(lines, "  Follow-ups (" + to_string(followup_count(record)) + "):")
+    lines = push_lines(lines, [
+        "    input:       " + display(usage["input_tokens"]),
+        "    output:      " + display(usage["output_tokens"]),
+        "    cache read:  " + display(usage["cache_read_tokens"]),
+        "    cache write: " + display(usage["cache_write_tokens"]),
+        "  Cost: " + cost_label(record),
+        "",
+        "  Follow-ups (" + to_string(followup_count(record)) + "):"
+    ])
     followups := record["followups"]
     mut ui := 0
     while ui < len(followups) {
         lines = push(lines, "    - " + render_entry(followups[ui]))
         ui = ui + 1
     }
-    lines = push(lines, "")
     notes := record["notes"]
-    lines = push(lines, "  Notes (" + to_string(len(notes)) + "):")
+    lines = push_lines(lines, ["", "  Notes (" + to_string(len(notes)) + "):"])
     mut ni := 0
     while ni < len(notes) {
         lines = push(lines, "    - " + render_entry(notes[ni]))
@@ -246,16 +258,21 @@ func md_row(cells) {
     return "| " + join(cells, " | ") + " |"
 }
 
+func append_md_section(out, title) {
+    return push_lines(out, ["## " + title, ""])
+}
+
 # Full markdown report.
 export func render_report(records) {
     counts := status_counts(records)
     mut out := []
-    out = push(out, "# RunLedger Report")
-    out = push(out, "")
-    out = push(out, "Generated: " + format_date(now(), "YYYY-MM-DDTHH:mm:ssZ"))
-    out = push(out, "")
-    out = push(out, "## Summary")
-    out = push(out, "")
+    out = push_lines(out, [
+        "# RunLedger Report",
+        "",
+        "Generated: " + format_date(now(), "YYYY-MM-DDTHH:mm:ssZ"),
+        ""
+    ])
+    out = append_md_section(out, "Summary")
     out = push(out, md_row(["Runs", "Pass", "Partial", "Fail", "Abandoned"]))
     out = push(out, md_row(["---:", "---:", "---:", "---:", "---:"]))
     out = push(out, md_row([
@@ -268,8 +285,7 @@ export func render_report(records) {
     out = push(out, "")
 
     ct := cost_total(records)
-    out = push(out, "## Cost")
-    out = push(out, "")
+    out = append_md_section(out, "Cost")
     if ct["n"] == 0 {
         out = push(out, "No cost data recorded.")
     } else {
@@ -277,23 +293,19 @@ export func render_report(records) {
     }
     out = push(out, "")
 
-    out = push(out, "## Runs")
-    out = push(out, "")
+    out = append_md_section(out, "Runs")
     out = push(out, md_row(["ID", "Task", "Provider", "Model", "Status", "Verdict", "Changed files", "Follow-ups", "Cost"]))
     out = push(out, md_row(["---", "---", "---", "---", "---", "---", "---:", "---:", "---:"]))
     out = append_run_rows(out, records)
     out = push(out, "")
 
-    out = push(out, "## Runs by task")
-    out = push(out, "")
+    out = append_md_section(out, "Runs by task")
     out = append_runs_by_task(out, records)
 
-    out = push(out, "## Follow-ups")
-    out = push(out, "")
+    out = append_md_section(out, "Follow-ups")
     out = append_grouped(out, records, "followups")
 
-    out = push(out, "## Notes")
-    out = push(out, "")
+    out = append_md_section(out, "Notes")
     out = append_grouped(out, records, "notes")
 
     return join(out, "\n")

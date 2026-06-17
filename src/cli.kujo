@@ -63,6 +63,10 @@ func usage_error(text) {
     return 2
 }
 
+func print_error(message) {
+    print("error: " + message)
+}
+
 func print_lines(lines) {
     mut i := 0
     while i < len(lines) {
@@ -156,16 +160,16 @@ func touch(record) {
 # the message.
 func require_record(ledger, id, where) {
     if type(id) == "null" || id == "" {
-        print("error: " + where + " requires a <run-id>")
+        print_error(where + " requires a <run-id>")
         return null
     }
     rec := load(ledger, id)
     if type(rec) == "null" {
-        print("error: no such run: " + id)
+        print_error("no such run: " + id)
         return null
     }
     if type(rec) == "dict" && has_key(rec, "error") == 1 {
-        print("error: " + rec["error"])
+        print_error(rec["error"])
         return null
     }
     return rec
@@ -202,7 +206,7 @@ func cmd_start(tokens) {
 
     res := save_new(ledger, rec)
     if has_key(res, "error") == 1 {
-        print("error: " + res["error"])
+        print_error(res["error"])
         return 1
     }
 
@@ -245,11 +249,11 @@ func cmd_finish(tokens) {
         return usage_error(usage("finish"))
     }
     if is_valid_status(status) == false {
-        print("error: invalid status '" + status + "'. Allowed: " + join(valid_statuses(), ", "))
+        print_error("invalid status '" + status + "'. Allowed: " + join(valid_statuses(), ", "))
         return 1
     }
     if status == "in_progress" {
-        print("error: finish requires a terminal status: pass, partial, fail, or abandoned")
+        print_error("finish requires a terminal status: pass, partial, fail, or abandoned")
         return 2
     }
     rec["status"] := status
@@ -397,27 +401,14 @@ func cmd_usage(tokens) {
     if type(usage) != "dict" {
         usage = empty_usage()
     }
-    res := set_int_flag(usage, "input_tokens", flag(parsed, "input"), "input")
+    res := set_int_flags(usage, parsed, [
+        {"key": "input_tokens", "flag": "input"},
+        {"key": "output_tokens", "flag": "output"},
+        {"key": "cache_read_tokens", "flag": "cache-read"},
+        {"key": "cache_write_tokens", "flag": "cache-write"}
+    ])
     if has_key(res, "error") == 1 {
-        print("error: " + res["error"])
-        return 2
-    }
-    usage = res["value"]
-    res = set_int_flag(usage, "output_tokens", flag(parsed, "output"), "output")
-    if has_key(res, "error") == 1 {
-        print("error: " + res["error"])
-        return 2
-    }
-    usage = res["value"]
-    res = set_int_flag(usage, "cache_read_tokens", flag(parsed, "cache-read"), "cache-read")
-    if has_key(res, "error") == 1 {
-        print("error: " + res["error"])
-        return 2
-    }
-    usage = res["value"]
-    res = set_int_flag(usage, "cache_write_tokens", flag(parsed, "cache-write"), "cache-write")
-    if has_key(res, "error") == 1 {
-        print("error: " + res["error"])
+        print_error(res["error"])
         return 2
     }
     usage = res["value"]
@@ -426,6 +417,21 @@ func cmd_usage(tokens) {
     save_update(ledger, rec)
     print("Updated usage for " + id)
     return 0
+}
+
+func set_int_flags(target, parsed, specs) {
+    mut acc := target
+    mut i := 0
+    while i < len(specs) {
+        spec := specs[i]
+        res := set_int_flag(acc, spec["key"], flag(parsed, spec["flag"]), spec["flag"])
+        if has_key(res, "error") == 1 {
+            return res
+        }
+        acc = res["value"]
+        i = i + 1
+    }
+    return {"value": acc}
 }
 
 func set_int_flag(target, key, value, flag_name) {
@@ -464,27 +470,14 @@ func cmd_cost(tokens) {
     if type(currency) != "null" {
         cost["currency"] := currency
     }
-    res := set_float_flag(cost, "input_cost", flag(parsed, "input"), "input")
+    res := set_float_flags(cost, parsed, [
+        {"key": "input_cost", "flag": "input"},
+        {"key": "output_cost", "flag": "output"},
+        {"key": "cache_cost", "flag": "cache"},
+        {"key": "total_cost", "flag": "total"}
+    ])
     if has_key(res, "error") == 1 {
-        print("error: " + res["error"])
-        return 2
-    }
-    cost = res["value"]
-    res = set_float_flag(cost, "output_cost", flag(parsed, "output"), "output")
-    if has_key(res, "error") == 1 {
-        print("error: " + res["error"])
-        return 2
-    }
-    cost = res["value"]
-    res = set_float_flag(cost, "cache_cost", flag(parsed, "cache"), "cache")
-    if has_key(res, "error") == 1 {
-        print("error: " + res["error"])
-        return 2
-    }
-    cost = res["value"]
-    res = set_float_flag(cost, "total_cost", flag(parsed, "total"), "total")
-    if has_key(res, "error") == 1 {
-        print("error: " + res["error"])
+        print_error(res["error"])
         return 2
     }
     cost = res["value"]
@@ -493,6 +486,21 @@ func cmd_cost(tokens) {
     save_update(ledger, rec)
     print("Updated cost for " + id)
     return 0
+}
+
+func set_float_flags(target, parsed, specs) {
+    mut acc := target
+    mut i := 0
+    while i < len(specs) {
+        spec := specs[i]
+        res := set_float_flag(acc, spec["key"], flag(parsed, spec["flag"]), spec["flag"])
+        if has_key(res, "error") == 1 {
+            return res
+        }
+        acc = res["value"]
+        i = i + 1
+    }
+    return {"value": acc}
 }
 
 func set_float_flag(target, key, value, flag_name) {
@@ -704,7 +712,7 @@ export func main(argv) {
         return cmd_report(rest)
     }
 
-    print("error: unknown command '" + cmd + "'")
+    print_error("unknown command '" + cmd + "'")
     print("Run 'runledger help' for usage.")
     return 2
 }
