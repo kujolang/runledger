@@ -15,7 +15,7 @@
 
 from src.util import slug, iso_now, pad_int
 from src.record import new_record, is_valid_status, valid_statuses, empty_usage, empty_cost, changed_file_count, followup_count
-from src.storage import generate_id, save_new, save_update, load, list_records, exists, ensure_ledger, run_path
+from src.storage import generate_id, save_new, save_update, load, list_records, exists, ensure_ledger, run_path, is_safe_run_id
 from src.gitmeta import is_repo, head_commit, is_dirty, changed_files, start_metadata, end_metadata
 from src.render import render_list, render_show, render_compare, render_report, status_counts, cost_total, cost_label
 
@@ -95,6 +95,12 @@ func test_record() {
 
 # --- storage: create / no-overwrite / load / list / id ------------------
 func test_storage() {
+    nested := join_path(WORK, "nested/ledger/path")
+    ensure_ledger(nested)
+    check(path_is_dir(join_path(nested, "runs")) == true, "nested ledger directories are created")
+    check(is_safe_run_id("safe-run-001") == true, "safe run id accepted")
+    check(is_safe_run_id("../escape") == false, "path traversal run id rejected")
+
     id := generate_id(LEDGER, "claude-opus-4-8", "Build RunLedger")
     check_eq(id, "${today_prefix()}-claude-opus-4-8-build-runledger-001", "id has expected shape")
     rec := new_record(id, "anthropic", "claude-opus-4-8", "Build RunLedger", null, ".")
@@ -112,6 +118,14 @@ func test_storage() {
     # round-trip load
     back := load(LEDGER, id)
     check_eq(back["id"], id, "loaded id matches")
+    unsafe := new_record("../escape", "p", "m", "t", null, ".")
+    unsafe_res := save_new(LEDGER, unsafe)
+    check(has_key(unsafe_res, "error") == 1, "save_new rejects unsafe ids")
+    unsafe_load := load(LEDGER, "../escape")
+    check(has_key(unsafe_load, "error") == 1, "load rejects unsafe ids")
+    write_file(run_path(LEDGER, "mismatch"), "{\"id\":\"other\",\"status\":\"pass\"}\n")
+    mismatch := load(LEDGER, "mismatch")
+    check(has_key(mismatch, "error") == 1, "load rejects mismatched record ids")
     # list
     recs := list_records(LEDGER)
     check_eq(len(recs), 1, "list returns one persisted run")
@@ -196,6 +210,13 @@ func test_report() {
     check(counts["pass"] >= 1, "status counts include the passed run")
     ct := cost_total(recs)
     check(ct["total"] >= 1.25, "cost total aggregates")
+
+    weird := new_record("weird", "p|x", "m", "Task | Pipe", null, ".")
+    weird["status"] := "pass"
+    weird["verdict"] := "line\npipe|ok"
+    weird_md := render_report([weird])
+    check(contains(weird_md, "Task \\| Pipe") == 1, "report escapes table pipes")
+    check(contains(weird_md, "line pipe\\|ok") == 1, "report flattens multiline table cells")
 }
 
 # --- behavior outside a git repo ---------------------------------------

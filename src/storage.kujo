@@ -18,6 +18,22 @@ export func run_path(ledger_dir, id) {
     return join_path(runs_dir(ledger_dir), id + ".json")
 }
 
+# True when a caller-supplied id is safe to map to exactly one file under
+# <ledger>/runs. Generated ids are stricter than this, but loading should reject
+# path traversal and empty values before building a filesystem path.
+export func is_safe_run_id(id) {
+    if type(id) != "string" || id == "" {
+        return false
+    }
+    if id == "." || id == ".." {
+        return false
+    }
+    if contains(id, "/") == 1 {
+        return false
+    }
+    return true
+}
+
 # Quote a path for safe inclusion in shell test commands.
 func shq(path) {
     escaped := replace_str(path, "'", "'\\''")
@@ -83,18 +99,17 @@ export func write_atomic_text(path, content) {
 # Create the ledger directory tree if it does not already exist. Safe to call
 # repeatedly. Returns the runs directory path.
 export func ensure_ledger(ledger_dir) {
-    if path_is_dir(ledger_dir) == false {
-        create_dir(ledger_dir)
-    }
+    ensure_dir_tree(ledger_dir)
     rd := runs_dir(ledger_dir)
-    if path_is_dir(rd) == false {
-        create_dir(rd)
-    }
+    ensure_dir_tree(rd)
     return rd
 }
 
 # True if a run with this id already exists on disk.
 export func exists(ledger_dir, id) {
+    if is_safe_run_id(id) == false {
+        return false
+    }
     return file_exists(run_path(ledger_dir, id))
 }
 
@@ -119,6 +134,9 @@ export func generate_id(ledger_dir, model, task_name) {
 # Persist a brand-new record. Refuses to clobber an existing file so runs are
 # never silently overwritten.
 export func save_new(ledger_dir, record) {
+    if is_safe_run_id(record["id"]) == false {
+        return {"error": "invalid run id: " + "${record["id"]}"}
+    }
     ensure_ledger(ledger_dir)
     path := run_path(ledger_dir, record["id"])
     if file_exists(path) {
@@ -130,6 +148,9 @@ export func save_new(ledger_dir, record) {
 
 # Persist updates to an existing record (replaces in place).
 export func save_update(ledger_dir, record) {
+    if is_safe_run_id(record["id"]) == false {
+        return {"error": "invalid run id: " + "${record["id"]}"}
+    }
     ensure_ledger(ledger_dir)
     path := run_path(ledger_dir, record["id"])
     write_atomic_text(path, to_json_pretty(record))
@@ -139,6 +160,9 @@ export func save_update(ledger_dir, record) {
 # Load one record by id. Returns null if it does not exist, or an
 # {"error": ...} dict if the file is present but unreadable/corrupt.
 export func load(ledger_dir, id) {
+    if is_safe_run_id(id) == false {
+        return {"error": "invalid run id: " + "${id}"}
+    }
     path := run_path(ledger_dir, id)
     if file_exists(path) == false {
         return null
@@ -158,7 +182,11 @@ export func load(ledger_dir, id) {
     if type(parsed) != "dict" {
         return {"error": "invalid run file shape: " + path}
     }
-    return normalize_record(parsed)
+    rec := normalize_record(parsed)
+    if rec["id"] != id {
+        return {"error": "run id mismatch in file: " + path}
+    }
+    return rec
 }
 
 # Load every run in the ledger, sorted by id (which is chronological by date

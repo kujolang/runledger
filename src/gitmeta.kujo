@@ -35,6 +35,10 @@ export func head_commit(repo_path) {
     if is_repo(repo_path) == false {
         return null
     }
+    return head_commit_in_repo(repo_path)
+}
+
+func head_commit_in_repo(repo_path) {
     r := git(repo_path, "rev-parse HEAD")
     if r.exitcode == 0 {
         return trim(r.stdout)
@@ -48,6 +52,10 @@ export func is_dirty(repo_path) {
     if is_repo(repo_path) == false {
         return null
     }
+    return is_dirty_in_repo(repo_path)
+}
+
+func is_dirty_in_repo(repo_path) {
     r := git(repo_path, "status --porcelain")
     if r.exitcode != 0 {
         return null
@@ -63,6 +71,11 @@ export func changed_files(repo_path) {
     if is_repo(repo_path) == false {
         return out
     }
+    return changed_files_in_repo(repo_path)
+}
+
+func changed_files_in_repo(repo_path) {
+    mut out := []
     # Tracked modifications/staged changes against HEAD.
     tracked := git(repo_path, "diff --name-only HEAD")
     if tracked.exitcode == 0 {
@@ -114,17 +127,30 @@ func includes(arr, value) {
 
 # Bundle the git facts captured at the start of a run.
 export func start_metadata(repo_path) {
+    if is_repo(repo_path) == false {
+        return {
+            "start_commit": null,
+            "git_dirty_start": null
+        }
+    }
     return {
-        "start_commit": head_commit(repo_path),
-        "git_dirty_start": is_dirty(repo_path)
+        "start_commit": head_commit_in_repo(repo_path),
+        "git_dirty_start": is_dirty_in_repo(repo_path)
     }
 }
 
 # Bundle the git facts captured when a run is finished.
 export func end_metadata(repo_path) {
+    if is_repo(repo_path) == false {
+        return {
+            "end_commit": null,
+            "git_dirty_end": null,
+            "changed_files": []
+        }
+    }
     return {
-        "end_commit": head_commit(repo_path),
-        "git_dirty_end": is_dirty(repo_path),
-        "changed_files": changed_files(repo_path)
+        "end_commit": head_commit_in_repo(repo_path),
+        "git_dirty_end": is_dirty_in_repo(repo_path),
+        "changed_files": changed_files_in_repo(repo_path)
     }
 }

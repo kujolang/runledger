@@ -279,7 +279,11 @@ func cmd_finish(tokens) {
     rec["changed_files"] := meta["changed_files"]
 
     touch(rec)
-    save_update(ledger, rec)
+    res := save_update(ledger, rec)
+    if has_key(res, "error") == 1 {
+        print_error(res["error"])
+        return 1
+    }
     print_lines([
         "Finished run: " + id,
         "  status:       " + "${rec["status"]}",
@@ -353,7 +357,11 @@ func cmd_note(tokens) {
     }
     rec["notes"] := push(rec["notes"], {"at": iso_now(), "text": text})
     touch(rec)
-    save_update(ledger, rec)
+    res := save_update(ledger, rec)
+    if has_key(res, "error") == 1 {
+        print_error(res["error"])
+        return 1
+    }
     print("Added note to " + id)
     return 0
 }
@@ -378,7 +386,11 @@ func cmd_followup(tokens) {
     }
     rec["followups"] := push(rec["followups"], {"at": iso_now(), "text": text})
     touch(rec)
-    save_update(ledger, rec)
+    res := save_update(ledger, rec)
+    if has_key(res, "error") == 1 {
+        print_error(res["error"])
+        return 1
+    }
     print("Added follow-up to " + id)
     return 0
 }
@@ -414,7 +426,11 @@ func cmd_usage(tokens) {
     usage = res["value"]
     rec["usage"] := usage
     touch(rec)
-    save_update(ledger, rec)
+    update_res := save_update(ledger, rec)
+    if has_key(update_res, "error") == 1 {
+        print_error(update_res["error"])
+        return 1
+    }
     print("Updated usage for " + id)
     return 0
 }
@@ -483,7 +499,11 @@ func cmd_cost(tokens) {
     cost = res["value"]
     rec["cost"] := cost
     touch(rec)
-    save_update(ledger, rec)
+    update_res := save_update(ledger, rec)
+    if has_key(update_res, "error") == 1 {
+        print_error(update_res["error"])
+        return 1
+    }
     print("Updated cost for " + id)
     return 0
 }
@@ -598,6 +618,9 @@ func cmd_report(tokens) {
     }
     md := render_report(recs)
     output := flag(parsed, "output")
+    if type(output) != "null" && output == "" {
+        return usage_error(usage("report"))
+    }
     if type(output) != "null" && output != "" {
         write_atomic_text(output, md)
         print("Wrote report to " + output)

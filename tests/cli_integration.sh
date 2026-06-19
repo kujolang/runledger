@@ -97,6 +97,13 @@ expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" finish --status pass --verdict "
 expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" start --provider openai --model --task "missing model value" --ledger "$LEDGER"
 expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" start --provider openai --model codex --task "missing repo value" --repo --ledger "$LEDGER"
 expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" list --ledger
+expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" report --output --ledger "$LEDGER"
+expect_exit 1 env KUJO="$KUJO_BIN" "$RUNLEDGER" show "../escape" --ledger "$LEDGER"
+
+NESTED_LEDGER="$TMPROOT/nested/ledger/path"
+NESTED_START="$(KUJO="$KUJO_BIN" "$RUNLEDGER" start --provider local --model local-agent --task "Nested Ledger" --repo "$PLAIN" --ledger "$NESTED_LEDGER")"
+NESTED_RID="$(printf '%s\n' "$NESTED_START" | sed -n '1s/^Started run: //p')"
+[[ -s "$NESTED_LEDGER/runs/$NESTED_RID.json" ]] || fail "nested ledger run file missing"
 
 KUJO="$KUJO_BIN" "$RUNLEDGER" note "$RID" "cli note" --ledger "$LEDGER"
 KUJO="$KUJO_BIN" "$RUNLEDGER" followup "$RID" "cli followup" --ledger "$LEDGER"
@@ -144,6 +151,13 @@ cat > "$LEDGER/runs/not-an-object.json" <<'JSON'
 JSON
 KUJO="$KUJO_BIN" "$RUNLEDGER" list --ledger "$LEDGER" >/tmp/runledger-cli-list-shape.out 2>&1 || fail "list crashed on non-object json run file"
 KUJO="$KUJO_BIN" "$RUNLEDGER" report --ledger "$LEDGER" >/tmp/runledger-cli-report-shape.out 2>&1 || fail "report crashed on non-object json run file"
+
+cat > "$LEDGER/runs/mismatched.json" <<'JSON'
+{"id":"other-id","created_at":"2026-06-01T00:00:00Z","status":"pass"}
+JSON
+expect_exit 1 env KUJO="$KUJO_BIN" "$RUNLEDGER" show mismatched --ledger "$LEDGER"
+KUJO="$KUJO_BIN" "$RUNLEDGER" list --ledger "$LEDGER" >/tmp/runledger-cli-list-mismatched.out 2>&1 || fail "list crashed on mismatched run id"
+KUJO="$KUJO_BIN" "$RUNLEDGER" report --ledger "$LEDGER" >/tmp/runledger-cli-report-mismatched.out 2>&1 || fail "report crashed on mismatched run id"
 
 # Partial JSON run files with missing keys should not crash show/list/report.
 BROKEN_ID="broken-shape"

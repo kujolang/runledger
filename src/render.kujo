@@ -255,7 +255,21 @@ export func cost_total(records) {
 
 # Markdown row helper for the report.
 func md_row(cells) {
-    return "| " + join(cells, " | ") + " |"
+    mut escaped := []
+    mut i := 0
+    while i < len(cells) {
+        escaped = push(escaped, md_escape(cells[i]))
+        i = i + 1
+    }
+    return "| " + join(escaped, " | ") + " |"
+}
+
+func md_escape(value) {
+    s := "${value}"
+    s = replace_str(s, "\r", " ")
+    s = replace_str(s, "\n", " ")
+    s = replace_str(s, "|", "\\|")
+    return s
 }
 
 func append_md_section(out, title) {
