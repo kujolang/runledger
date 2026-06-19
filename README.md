@@ -36,6 +36,26 @@ RunLedger is deliberately **not**:
 It does not try to judge code quality. It records facts you give it plus a few
 read-only git facts, and presents them back clearly.
 
+## Readiness posture
+
+RunLedger is intentionally small, local-first, and automation-friendly. It is
+ready to use as a practical agent-run receipt ledger, but "enterprise grade" is
+an ongoing standard rather than a one-time label. The current implementation
+prioritizes:
+
+- local JSON storage with no network calls and no provider API keys,
+- read-only git metadata collection,
+- atomic writes for run files and generated reports,
+- explicit exit codes for automation,
+- defensive loading of partial or malformed run files,
+- safe run-id handling so user-supplied IDs cannot escape the ledger directory,
+- markdown report output that stays stable when user text contains table
+  punctuation.
+
+The next major robustness frontier is optional higher-level workflow capture:
+recording commands/tests, adding machine-readable report metadata, and adding
+coordination safeguards if multiple writers target the same ledger at once.
+
 ## Installation
 
 RunLedger runs on the Kujo interpreter. You need a `kujo` binary available.
@@ -329,7 +349,9 @@ CLI integration checks through `bin/runledger`.
 - `commands` and `tests` are present in the schema but are reserved for future
   population; the current CLI does not write them.
 - The launcher needs a `kujo` binary (via `KUJO` or your `PATH`).
-- Run files are plain JSON; editing them by hand is supported but unchecked.
+- Run files are plain JSON; editing them by hand is supported. RunLedger
+  tolerates missing fields, rejects mismatched run IDs, and skips invalid run
+  files during list/report operations.
 
 ## Non-goals
 
@@ -353,18 +375,26 @@ runledger/
     cli.kujo              # arg parsing + command dispatch
   tests/
     runledger_test.kujo   # test suite
+    cli_integration.sh    # user-facing CLI checks
     run.sh                # test runner
   examples/
     build-tool-x.md             # sample prompt
     RUNLEDGER_REPORT.example.md  # sample generated report
+  docs/reviews/
+    BUG_HUNT_REPORT.md
+    CODEX_REVIEW_RUNLEDGER.md
+    RUNLEDGER_ENTERPRISE_REVIEW_2026-06-19.md
+  .agent/
+    next-agent-guide.md
+    session-notes.md
 ```
 
 ## Contributor notes
 
 Canonical copyable examples live in this README and
 `examples/build-tool-x.md`. `examples/RUNLEDGER_REPORT.example.md` is a sample
-generated report for output shape, while `BUG_HUNT_REPORT.md` and
-`CODEX_REVIEW_RUNLEDGER.md` are historical review artifacts.
+generated report for output shape. Historical and follow-up review artifacts
+live under `docs/reviews/`.
 
 For repo sweeps, exclude generated/bulk paths such as `.runledger/` and avoid
 treating generated report output as source examples unless the task explicitly

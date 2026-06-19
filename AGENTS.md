@@ -22,8 +22,7 @@ This repo is a small local CLI in Kujo for recording AI-agent run receipts.
 - Canonical copyable examples: `README.md` and `examples/build-tool-x.md`.
 - Generated-output example: `examples/RUNLEDGER_REPORT.example.md`; use it for
   report shape, not as a source-code style guide.
-- Historical review artifacts: `BUG_HUNT_REPORT.md` and
-  `CODEX_REVIEW_RUNLEDGER.md`.
+- Historical and follow-up review artifacts live under `docs/reviews/`.
 - Exclude generated/bulk paths from broad sweeps unless the task targets them:
   `.runledger/`, temp ledgers, and generated report outputs.
 

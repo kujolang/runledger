@@ -28,3 +28,16 @@ Focused fix pass completed for review findings:
 - Consider allowing scientific notation for cost values if needed.
 - Consider adding per-command `--help` subcommands.
 - If concurrent writers ever matter, add lock-file coordination.
+
+## Update (2026-06-19)
+
+Second hardening/review pass completed:
+
+- Moved historical root review docs into `docs/reviews/`.
+- Added `docs/reviews/RUNLEDGER_ENTERPRISE_REVIEW_2026-06-19.md` as the latest
+  next-session work queue.
+- Hardened storage against unsafe run IDs and mismatched JSON record IDs.
+- Made nested ledger directories work without pre-creating every parent.
+- Reduced repeated git repo probes in start/end metadata capture.
+- Escaped markdown table cells in generated reports.
+- Added CLI and module regressions for the new behavior.
