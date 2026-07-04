@@ -1,34 +1,34 @@
 RunLedger tests: 46 passed, 0 failed
 Type checking warnings:
-  [RUFRUN001] [runtime] Type Error: Function 'join_path' expects 0-1 arguments but got 2
+  [KUJORUN001] [runtime] Type Error: Function 'join_path' expects 0-1 arguments but got 2
   --> 0:0
 
-  [RUFRUN001] [runtime] Type Error: Function 'join_path' expects 0-1 arguments but got 2
+  [KUJORUN001] [runtime] Type Error: Function 'join_path' expects 0-1 arguments but got 2
   --> 0:0
 
-  [RUFRUN001] [runtime] Type Error: Function 'join_path' expects 0-1 arguments but got 2
+  [KUJORUN001] [runtime] Type Error: Function 'join_path' expects 0-1 arguments but got 2
   --> 0:0
 
-  [RUFRUN001] [runtime] Type Error: Function 'join_path' expects 0-1 arguments but got 2
+  [KUJORUN001] [runtime] Type Error: Function 'join_path' expects 0-1 arguments but got 2
   --> 0:0
 
-  [RUFRUN001] [runtime] Type Error: Function 'join_path' expects 0-1 arguments but got 2
+  [KUJORUN001] [runtime] Type Error: Function 'join_path' expects 0-1 arguments but got 2
   --> 0:0
 
-  [RUFRUN001] [runtime] Type Error: Function 'join_path' expects 0-1 arguments but got 2
+  [KUJORUN001] [runtime] Type Error: Function 'join_path' expects 0-1 arguments but got 2
   --> 0:0
 
-  [RUFRUN001] [runtime] Type Error: Comparison '==' between incompatible types: Bool and Int
-  --> 0:0
-   = help: Convert one value to match the type of the other
-   = note: Comparison operators require both operands to have compatible types
-
-  [RUFRUN001] [runtime] Type Error: Comparison '==' between incompatible types: Bool and Int
+  [KUJORUN001] [runtime] Type Error: Comparison '==' between incompatible types: Bool and Int
   --> 0:0
    = help: Convert one value to match the type of the other
    = note: Comparison operators require both operands to have compatible types
 
-  [RUFRUN001] [runtime] Type Error: Comparison '==' between incompatible types: Bool and Int
+  [KUJORUN001] [runtime] Type Error: Comparison '==' between incompatible types: Bool and Int
+  --> 0:0
+   = help: Convert one value to match the type of the other
+   = note: Comparison operators require both operands to have compatible types
+
+  [KUJORUN001] [runtime] Type Error: Comparison '==' between incompatible types: Bool and Int
   --> 0:0
    = help: Convert one value to match the type of the other
    = note: Comparison operators require both operands to have compatible types
