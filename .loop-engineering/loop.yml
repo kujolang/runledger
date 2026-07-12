@@ -17,7 +17,7 @@ blocked_actions:
 
 eval_gates:
   - id: tests
-    command: "KUJO_BIN=${KUJO_BIN:-../kujo/target/debug/kujo} ./tests/run.sh"
+    command: "KUJO=${KUJO:-../kujo/target/debug/kujo} ./tests/run.sh"
     required: true
   - id: diff_check
     command: "git diff --check"

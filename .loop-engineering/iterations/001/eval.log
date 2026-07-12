@@ -1,8 +1,65 @@
 
 ## gate: tests
-$ KUJO_BIN=${KUJO_BIN:-../kujo/target/debug/kujo} ./tests/run.sh
-./tests/run.sh: line 11: kujo: command not found
+$ KUJO=${KUJO:-../kujo/target/debug/kujo} ./tests/run.sh
+Compiler optimization: 0 constants folded, 2 dead instructions removed, 0 peephole optimizations
+
+RunLedger tests: 54 passed, 0 failed
+Added note to 2026-07-12-codex-cli-test-001
+Added follow-up to 2026-07-12-codex-cli-test-001
+Updated usage for 2026-07-12-codex-cli-test-001
+Updated cost for 2026-07-12-codex-cli-test-001
+Finished run: 2026-07-12-codex-cli-test-001
+  status:       partial
+  end commit:   d77dc4c4f6446dbee1e57c1870b8f55a2dd201c6
+  changed files: 1
+Wrote report to /var/folders/wb/0cck3lgd08n55g_8ly9qmf_00000gn/T//runledger-cli-test.l4lEdw/RUNLEDGER_REPORT.md
+Wrote report to /var/folders/wb/0cck3lgd08n55g_8ly9qmf_00000gn/T//runledger-cli-test.l4lEdw/nested/out/RUNLEDGER_REPORT.md
+Finished run: 2026-07-12-local-agent-no-git-001
+  status:       pass
+  end commit:   -
+  changed files: 0
+Finished run: 2026-07-12-local-agent-no-commit-repo-001
+  status:       pass
+  end commit:   -
+  changed files: 1
+CLI integration: ok
+gate tests: pass
 
 ## gate: diff_check
 $ git diff --check
-gate diff_check: pass
+.loop-engineering/iterations/001/diff.patch:7: trailing whitespace.
++ 
+.loop-engineering/iterations/001/diff.patch:31: trailing whitespace.
++- 
+.loop-engineering/iterations/001/diff.patch:38: trailing whitespace.
++- 
+.loop-engineering/iterations/001/diff.patch:45: trailing whitespace.
++- 
+.loop-engineering/iterations/001/diff.patch:53: trailing whitespace.
++- 
+.loop-engineering/iterations/001/diff.patch:80: trailing whitespace.
++- 
+.loop-engineering/iterations/001/diff.patch:102: trailing whitespace.
++- 
+.loop-engineering/iterations/001/diff.patch:106: trailing whitespace.
++- 
+.loop-engineering/iterations/001/diff.patch:124: trailing whitespace.
++- 
+.loop-engineering/iterations/001/diff.patch:128: trailing whitespace.
++- 
+.loop-engineering/iterations/001/diff.patch:146: trailing whitespace.
++- 
+.loop-engineering/iterations/001/diff.patch:163: trailing whitespace.
++- 
+.loop-engineering/iterations/001/diff.patch:184: trailing whitespace.
++- 
+.loop-engineering/iterations/001/diff.patch:199: trailing whitespace.
++- 
+.loop-engineering/iterations/001/diff.patch:203: trailing whitespace.
++- 
+.loop-engineering/iterations/001/diff.patch:209: trailing whitespace.
++- 
+.loop-engineering/iterations/001/diff.patch:215: trailing whitespace.
++- 
+.loop-engineering/iterations/001/diff.patch:221: trailing whitespace.
++ 
