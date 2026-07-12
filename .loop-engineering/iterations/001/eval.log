@@ -10,10 +10,10 @@ Updated usage for 2026-07-12-codex-cli-test-001
 Updated cost for 2026-07-12-codex-cli-test-001
 Finished run: 2026-07-12-codex-cli-test-001
   status:       partial
-  end commit:   d77dc4c4f6446dbee1e57c1870b8f55a2dd201c6
+  end commit:   62e6b9ce067f55ef3a31495aa6ee8f1f658f216c
   changed files: 1
-Wrote report to /var/folders/wb/0cck3lgd08n55g_8ly9qmf_00000gn/T//runledger-cli-test.l4lEdw/RUNLEDGER_REPORT.md
-Wrote report to /var/folders/wb/0cck3lgd08n55g_8ly9qmf_00000gn/T//runledger-cli-test.l4lEdw/nested/out/RUNLEDGER_REPORT.md
+Wrote report to /var/folders/wb/0cck3lgd08n55g_8ly9qmf_00000gn/T//runledger-cli-test.nI8qnd/RUNLEDGER_REPORT.md
+Wrote report to /var/folders/wb/0cck3lgd08n55g_8ly9qmf_00000gn/T//runledger-cli-test.nI8qnd/nested/out/RUNLEDGER_REPORT.md
 Finished run: 2026-07-12-local-agent-no-git-001
   status:       pass
   end commit:   -
@@ -26,40 +26,6 @@ CLI integration: ok
 gate tests: pass
 
 ## gate: diff_check
-$ git diff --check
-.loop-engineering/iterations/001/diff.patch:7: trailing whitespace.
-+ 
-.loop-engineering/iterations/001/diff.patch:31: trailing whitespace.
-+- 
-.loop-engineering/iterations/001/diff.patch:38: trailing whitespace.
-+- 
-.loop-engineering/iterations/001/diff.patch:45: trailing whitespace.
-+- 
-.loop-engineering/iterations/001/diff.patch:53: trailing whitespace.
-+- 
-.loop-engineering/iterations/001/diff.patch:80: trailing whitespace.
-+- 
-.loop-engineering/iterations/001/diff.patch:102: trailing whitespace.
-+- 
-.loop-engineering/iterations/001/diff.patch:106: trailing whitespace.
-+- 
-.loop-engineering/iterations/001/diff.patch:124: trailing whitespace.
-+- 
-.loop-engineering/iterations/001/diff.patch:128: trailing whitespace.
-+- 
-.loop-engineering/iterations/001/diff.patch:146: trailing whitespace.
-+- 
-.loop-engineering/iterations/001/diff.patch:163: trailing whitespace.
-+- 
-.loop-engineering/iterations/001/diff.patch:184: trailing whitespace.
-+- 
-.loop-engineering/iterations/001/diff.patch:199: trailing whitespace.
-+- 
-.loop-engineering/iterations/001/diff.patch:203: trailing whitespace.
-+- 
-.loop-engineering/iterations/001/diff.patch:209: trailing whitespace.
-+- 
-.loop-engineering/iterations/001/diff.patch:215: trailing whitespace.
-+- 
-.loop-engineering/iterations/001/diff.patch:221: trailing whitespace.
-+ 
+$ git diff --check -- . ':(exclude).loop-engineering/**
+bash: -c: line 0: unexpected EOF while looking for matching `''
+bash: -c: line 1: syntax error: unexpected end of file
