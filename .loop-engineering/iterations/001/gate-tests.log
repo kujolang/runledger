@@ -7,10 +7,10 @@ Updated usage for 2026-07-12-codex-cli-test-001
 Updated cost for 2026-07-12-codex-cli-test-001
 Finished run: 2026-07-12-codex-cli-test-001
   status:       partial
-  end commit:   62e6b9ce067f55ef3a31495aa6ee8f1f658f216c
+  end commit:   ef1361246d9e8a8e50f9d96d1f287a8e9e899b60
   changed files: 1
-Wrote report to /var/folders/wb/0cck3lgd08n55g_8ly9qmf_00000gn/T//runledger-cli-test.nI8qnd/RUNLEDGER_REPORT.md
-Wrote report to /var/folders/wb/0cck3lgd08n55g_8ly9qmf_00000gn/T//runledger-cli-test.nI8qnd/nested/out/RUNLEDGER_REPORT.md
+Wrote report to /var/folders/wb/0cck3lgd08n55g_8ly9qmf_00000gn/T//runledger-cli-test.0ZeojB/RUNLEDGER_REPORT.md
+Wrote report to /var/folders/wb/0cck3lgd08n55g_8ly9qmf_00000gn/T//runledger-cli-test.0ZeojB/nested/out/RUNLEDGER_REPORT.md
 Finished run: 2026-07-12-local-agent-no-git-001
   status:       pass
   end commit:   -
