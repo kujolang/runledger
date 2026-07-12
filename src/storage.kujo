@@ -5,7 +5,7 @@
 # function takes the ledger directory explicitly so callers stay in control of
 # where the ledger lives (default ./.runledger, overridable via CLI/env).
 
-from src.util import slug, today_utc, pad_int, truthy
+from src.util import slug, pad_int, truthy
 from src.record import empty_usage, empty_cost
 
 # Path to the directory holding individual run files.
@@ -118,7 +118,7 @@ export func exists(ledger_dir, id) {
 # where NNN is the next free 3-digit sequence for that exact prefix. This keeps
 # ids sortable, readable, and collision-free within a ledger.
 export func generate_id(ledger_dir, model, task_name) {
-    prefix := today_utc() + "-" + slug(model) + "-" + slug(task_name)
+    prefix := format_date(now_unix(), "YYYY-MM-DD") + "-" + slug(model) + "-" + slug(task_name)
     mut seq := 1
     while seq < 1000 {
         candidate := prefix + "-" + pad_int(seq, 3)

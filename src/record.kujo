@@ -4,8 +4,6 @@
 # its default/empty values, and validation of the small set of enumerated
 # fields (status). Everything is a plain dict so it serializes directly to JSON.
 
-from src.util import iso_now
-
 # Allowed run statuses. `in_progress` is the implicit start state; the rest are
 # terminal verdicts a human assigns when finishing a run.
 export func valid_statuses() {
@@ -48,7 +46,7 @@ export func empty_cost() {
 # storage layer mints the id, the CLI supplies provider/model/task/etc.).
 # Git fields default to null and are filled in defensively by the git layer.
 export func new_record(id, provider, model, task_name, prompt_file, repo_path) {
-    ts := iso_now()
+    ts := now_utc()
     return {
         "id": id,
         "created_at": ts,

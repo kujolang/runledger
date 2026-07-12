@@ -9,7 +9,7 @@
 # Kujo compile path rejects more than one `for` loop per function scope, so the
 # index form keeps the whole module compiling cleanly under `kujo check`.
 
-from src.util import pad_right, display, display_or
+from src.util import display, display_or
 from src.record import changed_file_count, followup_count, valid_statuses
 
 # Human-friendly cost string for a record's cost block: "1.25 USD" or "-".
@@ -70,7 +70,7 @@ func render_row(cells, widths) {
     mut parts := []
     mut i := 0
     while i < len(cells) {
-        parts = push(parts, pad_right("${cells[i]}", widths[i]))
+        parts = push(parts, pad_right("${cells[i]}", widths[i], " "))
         i = i + 1
     }
     return join(parts, "  ")

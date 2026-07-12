@@ -1,0 +1,8 @@
+
+## gate: tests
+$ KUJO_BIN=${KUJO_BIN:-../kujo/target/debug/kujo} ./tests/run.sh
+./tests/run.sh: line 11: kujo: command not found
+
+## gate: diff_check
+$ git diff --check
+gate diff_check: pass

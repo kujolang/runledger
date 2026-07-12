@@ -37,32 +37,12 @@ export func slug(text) {
     return out
 }
 
-# Current time as an ISO-8601 UTC timestamp, e.g. 2026-05-29T17:08:42Z.
-export func iso_now() {
-    return format_date(now(), "YYYY-MM-DDTHH:mm:ssZ")
-}
-
-# Current calendar date in UTC, e.g. 2026-05-29.
-export func today_utc() {
-    return format_date(now(), "YYYY-MM-DD")
-}
-
 # Zero-pad an integer to `width` digits (used for run sequence numbers).
 export func pad_int(value, width) {
     s := to_string(value)
     mut out := s
     while len(out) < width {
         out = "0" + out
-    }
-    return out
-}
-
-# Right-pad a string with spaces to `width` for fixed-width table columns.
-# Strings longer than width are returned unchanged (no truncation surprises).
-export func pad_right(text, width) {
-    mut out := text
-    while len(out) < width {
-        out = out + " "
     }
     return out
 }

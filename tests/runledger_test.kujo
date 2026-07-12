@@ -13,7 +13,7 @@
 # the current runtime, so this hand-rolled harness is used instead. It runs on
 # the standard `kujo run` path where module imports work normally.
 
-from src.util import slug, iso_now, pad_int
+from src.util import slug, pad_int
 from src.record import new_record, is_valid_status, valid_statuses, empty_usage, empty_cost, changed_file_count, followup_count
 from src.storage import generate_id, save_new, save_update, load, list_records, exists, ensure_ledger, run_path, is_safe_run_id
 from src.gitmeta import is_repo, head_commit, is_dirty, changed_files, start_metadata, end_metadata
@@ -73,8 +73,8 @@ func test_util() {
     check_eq(slug("Build RunLedger!"), "build-runledger", "slug strips punctuation")
     check_eq(slug("claude-opus-4-8"), "claude-opus-4-8", "slug preserves model name")
     check_eq(pad_int(7, 3), "007", "pad_int zero pads")
-    check(len(iso_now()) == 20, "iso_now is 20 chars (….Z)")
-    check(ends_with(iso_now(), "Z"), "iso_now ends with Z")
+    check(len(now_utc()) == 20, "now_utc is 20 chars (….Z)")
+    check(ends_with(now_utc(), "Z"), "now_utc ends with Z")
 }
 
 # --- record: shape + validation ----------------------------------------
@@ -164,12 +164,12 @@ func test_lifecycle() {
     check(changed_file_count(reloaded) >= 1, "changed files detected on finish")
 
     # notes
-    rec["notes"] := push(rec["notes"], {"at": iso_now(), "text": "a note"})
+    rec["notes"] := push(rec["notes"], {"at": now_utc(), "text": "a note"})
     save_update(LEDGER, rec)
     check_eq(len(load(LEDGER, id)["notes"]), 1, "note added and persisted")
 
     # followups
-    rec["followups"] := push(rec["followups"], {"at": iso_now(), "text": "a followup"})
+    rec["followups"] := push(rec["followups"], {"at": now_utc(), "text": "a followup"})
     save_update(LEDGER, rec)
     check_eq(followup_count(load(LEDGER, id)), 1, "followup added and persisted")
 
