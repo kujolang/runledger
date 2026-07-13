@@ -13,7 +13,13 @@ set -euo pipefail
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 KUJO="${KUJO:-kujo}"
 
-if [ -z "${KUJO_MODULE_PATH:-}" ] && [ -d "$PROJECT_DIR/../kujo/modules" ]; then
+if [ "${KUJO#/}" = "$KUJO" ] && [ -x "$PROJECT_DIR/$KUJO" ]; then
+  KUJO="$PROJECT_DIR/$KUJO"
+fi
+
+if [ -n "${KUJO_MODULE_PATH:-}" ] && [ "${KUJO_MODULE_PATH#/}" = "$KUJO_MODULE_PATH" ] && [ -d "$PROJECT_DIR/$KUJO_MODULE_PATH" ]; then
+  export KUJO_MODULE_PATH="$PROJECT_DIR/$KUJO_MODULE_PATH"
+elif [ -z "${KUJO_MODULE_PATH:-}" ] && [ -d "$PROJECT_DIR/../kujo/modules" ]; then
   export KUJO_MODULE_PATH="$PROJECT_DIR/../kujo/modules"
 fi
 
