@@ -24,7 +24,7 @@ success
 
 ## External Blockers
 
-- kujo-cli-module-distribution: Publish/install the first-party CLI module or add a supported module search path/package dependency, then migrate parser call sites and add parser parity tests.
+- none
 
 ## Next Start
 

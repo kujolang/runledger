@@ -14,6 +14,7 @@ from src.record import new_record, is_valid_status, valid_statuses, empty_usage,
 from src.storage import generate_id, save_new, save_update, load, list_records, run_path, write_atomic_text
 from src.gitmeta import start_metadata, end_metadata
 from src.render import render_list, render_show, render_compare, render_report
+from cli import parse_args
 
 VERSION := "0.1.0"
 
@@ -78,45 +79,6 @@ func print_lines(lines) {
 # ---------------------------------------------------------------------------
 # Argument parsing
 # ---------------------------------------------------------------------------
-
-# Split tokens after the subcommand into positionals and flags. Flag names in
-# `bool_flags` are treated as valueless switches (e.g. --json); every other
-# `--flag` consumes the next token as its value.
-func parse_args(tokens, bool_flags) {
-    mut positionals := []
-    mut flags := {}
-    mut i := 0
-    n := len(tokens)
-    while i < n {
-        tok := tokens[i]
-        if starts_with(tok, "--") {
-            key := substring(tok, 2, len(tok))
-            if includes(bool_flags, key) {
-                flags[key] := true
-            } else {
-                if i + 1 < n && starts_with(tokens[i + 1], "--") == false {
-                    flags[key] := tokens[i + 1]
-                    i = i + 1
-                } else {
-                    flags[key] := ""
-                }
-            }
-        } else {
-            positionals = push(positionals, tok)
-        }
-        i = i + 1
-    }
-    return {"positionals": positionals, "flags": flags}
-}
-
-func includes(arr, value) {
-    for item in arr {
-        if item == value {
-            return true
-        }
-    }
-    return false
-}
 
 func flag(parsed, name) {
     if has_key(parsed["flags"], name) == 1 {

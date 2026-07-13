@@ -13,6 +13,10 @@ set -euo pipefail
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 KUJO="${KUJO:-kujo}"
 
+if [ -z "${KUJO_MODULE_PATH:-}" ] && [ -d "$PROJECT_DIR/../kujo/modules" ]; then
+  export KUJO_MODULE_PATH="$PROJECT_DIR/../kujo/modules"
+fi
+
 if ! command -v "$KUJO" >/dev/null 2>&1 && [ ! -x "$KUJO" ]; then
   echo "runledger: cannot find the Kujo interpreter ('$KUJO')." >&2
   echo "Set KUJO to your kujo binary, e.g. KUJO=/path/to/kujo/target/release/kujo" >&2

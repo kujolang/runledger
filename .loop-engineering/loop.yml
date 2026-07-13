@@ -17,7 +17,7 @@ blocked_actions:
 
 eval_gates:
   - id: tests
-    command: "KUJO=${KUJO:-../kujo/target/debug/kujo} ./tests/run.sh"
+    command: "KUJO=${KUJO:-../kujo/target/debug/kujo} KUJO_MODULE_PATH=${KUJO_MODULE_PATH:-../kujo/modules} ./tests/run.sh"
     required: true
   - id: diff_check
     command: 'files=$(git diff --name-only | grep -v "^.loop-engineering/" || true); if [ -n "$files" ]; then git diff --check -- $files; fi'
