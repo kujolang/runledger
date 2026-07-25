@@ -1,0 +1,54 @@
+func normalize_flag_name(token) {
+    if starts_with(token, "--") {
+        return substring(token, 2, len(token))
+    }
+    return token
+}
+
+func contains_name(names, name) {
+    mut i := 0
+    while i < len(names) {
+        if names[i] == name {
+            return true
+        }
+        i = i + 1
+    }
+    return false
+}
+
+func parse_args(tokens, bool_flags) {
+    mut flags := {}
+    mut positionals := []
+    mut i := 0
+    while i < len(tokens) {
+        token := tokens[i]
+        if starts_with(token, "--") {
+            eq_index := index_of(token, "=")
+            if eq_index >= 0 {
+                name := normalize_flag_name(substring(token, 0, eq_index))
+                flags[name] := substring(token, eq_index + 1, len(token))
+                i = i + 1
+                continue
+            }
+            name := normalize_flag_name(token)
+            if contains_name(bool_flags, name) {
+                flags[name] := true
+                i = i + 1
+                continue
+            }
+            if i + 1 < len(tokens) && starts_with(tokens[i + 1], "--") == false {
+                flags[name] := tokens[i + 1]
+                i = i + 2
+                continue
+            }
+            flags[name] := ""
+            i = i + 1
+            continue
+        }
+        positionals = push(positionals, token)
+        i = i + 1
+    }
+    return {"flags": flags, "positionals": positionals}
+}
+
+export parse_args := parse_args
