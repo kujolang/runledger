@@ -41,15 +41,15 @@ This repo is a small local CLI in Kujo for recording AI-agent run receipts.
 RunLedger needs the Kujo language runtime (`kujo --help` should list `run`).
 Python Kujo (linter) is not compatible.
 
-Set runtime explicitly if needed:
+Confirm Kujo is on your `PATH`:
 
 ```bash
-export KUJO=kujo
+kujo --version
 ```
 
 ## Verification
 
 ```bash
-KUJO=kujo ./tests/run.sh
-KUJO=kujo ./bin/runledger help
+./tests/run.sh
+./bin/runledger help
 ```
