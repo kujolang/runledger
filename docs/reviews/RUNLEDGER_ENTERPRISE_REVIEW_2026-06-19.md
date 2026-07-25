@@ -131,7 +131,7 @@ will need a less bespoke install path.
 ## Suggested verification after next pass
 
 ```bash
-KUJO=/Users/robertdevore/2026/Kujolang/kujo-repos/kujo/target/release/kujo ./tests/run.sh
-KUJO=/Users/robertdevore/2026/Kujolang/kujo-repos/kujo/target/release/kujo ./bin/runledger help
-KUJO=/Users/robertdevore/2026/Kujolang/kujo-repos/kujo/target/release/kujo ./bin/runledger report --ledger /tmp/runledger-demo
+KUJO=kujo ./tests/run.sh
+KUJO=kujo ./bin/runledger help
+KUJO=kujo ./bin/runledger report --ledger /tmp/runledger-demo
 ```

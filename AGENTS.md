@@ -44,12 +44,12 @@ Python Kujo (linter) is not compatible.
 Set runtime explicitly if needed:
 
 ```bash
-export KUJO=/path/to/kujo/target/release/kujo
+export KUJO=kujo
 ```
 
 ## Verification
 
 ```bash
-KUJO=/path/to/kujo ./tests/run.sh
-KUJO=/path/to/kujo ./bin/runledger help
+KUJO=kujo ./tests/run.sh
+KUJO=kujo ./bin/runledger help
 ```

@@ -34,13 +34,13 @@ Commands run, with outcomes:
 - `git diff --name-only` -> pass (clean)
 - `git log --oneline -5` -> pass (`Initial commit`)
 - `which kujo && kujo --version` -> pass (`kujo 0.15.13`, but wrong binary family for this project)
-- `ls -l /path/to/kujo/target/release/kujo` -> pass (correct Kujo language runtime present)
-- `/path/to/kujo/target/release/kujo --help | head -n 40` -> pass
-- `KUJO=/path/to/kujo/target/release/kujo ./tests/run.sh` -> pass (`46 passed, 0 failed`)
-- `KUJO=/path/to/kujo/target/release/kujo ./bin/runledger help` -> pass
-- `KUJO=/path/to/kujo/target/release/kujo ./bin/runledger version` -> pass
-- `/path/to/kujo/target/release/kujo package-install` -> pass (`no dependencies declared`)
-- `/path/to/kujo/target/release/kujo check <each source/test file>` -> pass for all files
+- `ls -l kujo` -> pass (correct Kujo language runtime present)
+- `kujo --help | head -n 40` -> pass
+- `KUJO=kujo ./tests/run.sh` -> pass (`46 passed, 0 failed`)
+- `KUJO=kujo ./bin/runledger help` -> pass
+- `KUJO=kujo ./bin/runledger version` -> pass
+- `kujo package-install` -> pass (`no dependencies declared`)
+- `kujo check <each source/test file>` -> pass for all files
 - Full isolated smoke flow in temp dirs (git + non-git) -> pass:
   - start sample run
   - show sample run

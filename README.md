@@ -79,7 +79,7 @@ kujo --help
 cd runledger
 
 # 2. Point RunLedger at your kujo binary (or put `kujo` on your PATH)
-export KUJO=/path/to/kujo/target/release/kujo
+export KUJO=kujo
 
 # 3. (optional) put the launcher on your PATH
 export PATH="$PWD/bin:$PATH"

@@ -18,9 +18,9 @@ Date/time (UTC): 2026-05-31T13:17:53Z
 
 ## Commands Discovered
 
-- Runtime verification: `KUJO=/path/to/kujo ./bin/runledger help`
-- Module test harness: `KUJO=/path/to/kujo /path/to/kujo run tests/runledger_test.kujo`
-- Full project tests: `KUJO=/path/to/kujo ./tests/run.sh`
+- Runtime verification: `KUJO=kujo ./bin/runledger help`
+- Module test harness: `KUJO=kujo /path/to/kujo run tests/runledger_test.kujo`
+- Full project tests: `KUJO=kujo ./tests/run.sh`
 
 ## Initial Risk Areas
 
@@ -31,12 +31,12 @@ Date/time (UTC): 2026-05-31T13:17:53Z
 
 ## Testing/Verification Commands Available
 
-- `KUJO=/path/to/kujo/target/release/kujo ./tests/run.sh`
+- `KUJO=kujo ./tests/run.sh`
 - Direct CLI probes through `./bin/runledger ...` with controlled temp ledgers.
 
 ## Limitations / Assumptions
 
-- System `kujo` on PATH is Python Kujo (no `run` subcommand); verification uses Kujo runtime binary at `/path/to/kujo/target/release/kujo`.
+- System `kujo` on PATH is Python Kujo (no `run` subcommand); verification uses Kujo runtime binary at `kujo`.
 - Existing unrelated working-tree changes were preserved and not reverted.
 
 ## Bug: Missing Flag Value Can Be Misparsed As Another Flag
@@ -126,7 +126,7 @@ Fixed.
 
 ## Verification Log (Post-Fix)
 
-- `KUJO=/path/to/kujo/target/release/kujo ./tests/run.sh` -> pass
+- `KUJO=kujo ./tests/run.sh` -> pass
   - `RunLedger tests: 46 passed, 0 failed`
   - `CLI integration: ok`
 
