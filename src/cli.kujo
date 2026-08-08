@@ -16,7 +16,7 @@ from src.gitmeta import start_metadata, end_metadata
 from src.render import render_list, render_show, render_compare, render_report
 from cli import parse_args
 
-VERSION := "0.1.0"
+VERSION := "1.0.0"
 
 # ---------------------------------------------------------------------------
 # User-facing text
