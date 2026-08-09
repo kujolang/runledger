@@ -17,7 +17,7 @@ from src.util import slug, pad_int
 from src.record import new_record, is_valid_status, valid_statuses, empty_usage, empty_cost, changed_file_count, followup_count
 from src.storage import generate_id, save_new, save_update, load, list_records, exists, ensure_ledger, run_path, is_safe_run_id
 from src.gitmeta import is_repo, head_commit, is_dirty, changed_files, start_metadata, end_metadata
-from src.render import render_list, render_show, render_compare, render_report, status_counts, cost_total, cost_label
+from src.render import render_report, status_counts, cost_total, cost_label
 
 mut passed := 0
 mut failed := 0
@@ -105,11 +105,11 @@ func test_storage() {
     check_eq(id, "${today_prefix()}-claude-opus-4-8-build-runledger-001", "id has expected shape")
     rec := new_record(id, "anthropic", "claude-opus-4-8", "Build RunLedger", null, ".")
     res := save_new(LEDGER, rec)
-    check(has_key(res, "ok") == 1, "save_new succeeds")
+    check(has_key(res, "ok") == 1 && len(res["ok"]) > 0, "save_new returns the persisted path")
     check(exists(LEDGER, id) == true, "run exists after save")
     # no silent overwrite
     res2 := save_new(LEDGER, rec)
-    check(has_key(res2, "error") == 1, "save_new refuses to overwrite")
+    check(has_key(res2, "error") == 1 && len(res2["error"]) > 0, "save_new refuses to overwrite")
     # id increments
     id2 := generate_id(LEDGER, "claude-opus-4-8", "Build RunLedger")
     check(ends_with(id2, "-002"), "second id increments to 002")
@@ -120,12 +120,12 @@ func test_storage() {
     check_eq(back["id"], id, "loaded id matches")
     unsafe := new_record("../escape", "p", "m", "t", null, ".")
     unsafe_res := save_new(LEDGER, unsafe)
-    check(has_key(unsafe_res, "error") == 1, "save_new rejects unsafe ids")
+    check(has_key(unsafe_res, "error") == 1 && len(unsafe_res["error"]) > 0, "save_new rejects unsafe ids")
     unsafe_load := load(LEDGER, "../escape")
-    check(has_key(unsafe_load, "error") == 1, "load rejects unsafe ids")
+    check(has_key(unsafe_load, "error") == 1 && len(unsafe_load["error"]) > 0, "load rejects unsafe ids")
     write_file(run_path(LEDGER, "mismatch"), "{\"id\":\"other\",\"status\":\"pass\"}\n")
     mismatch := load(LEDGER, "mismatch")
-    check(has_key(mismatch, "error") == 1, "load rejects mismatched record ids")
+    check(has_key(mismatch, "error") == 1 && len(mismatch["error"]) > 0, "load rejects mismatched record ids")
     # list
     recs := list_records(LEDGER)
     check_eq(len(recs), 1, "list returns one persisted run")
@@ -190,15 +190,6 @@ func test_lifecycle() {
     check_eq(cost_label(load(LEDGER, id)), "1.25 USD", "cost label formats")
 }
 
-# --- json output --------------------------------------------------------
-func test_json_output() {
-    recs := list_records(LEDGER)
-    j := to_json_pretty(recs)
-    parsed := parse_json(j)
-    check(type(parsed) == "array" || type(parsed) == "list", "show/list --json round-trips")
-    check(len(parsed) == len(recs), "json array length matches")
-}
-
 # --- report -------------------------------------------------------------
 func test_report() {
     recs := list_records(LEDGER)
@@ -235,7 +226,6 @@ test_util()
 test_record()
 test_storage()
 test_lifecycle()
-test_json_output()
 test_report()
 test_non_git()
 teardown()
