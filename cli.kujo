@@ -19,18 +19,38 @@ func contains_name(names, name) {
 func parse_args(tokens, bool_flags) {
     mut flags := {}
     mut positionals := []
+    mut errors := []
     mut i := 0
     while i < len(tokens) {
         token := tokens[i]
+        if token == "--" {
+            i = i + 1
+            while i < len(tokens) {
+                positionals = push(positionals, tokens[i])
+                i = i + 1
+            }
+            continue
+        }
         if starts_with(token, "--") {
             eq_index := index_of(token, "=")
             if eq_index >= 0 {
                 name := normalize_flag_name(substring(token, 0, eq_index))
-                flags[name] := substring(token, eq_index + 1, len(token))
+                if contains_name(bool_flags, name) {
+                    errors = push(errors, "--" + name + " does not take a value")
+                } else if has_key(flags, name) == 1 {
+                    errors = push(errors, "duplicate flag: --" + name)
+                } else {
+                    flags[name] := substring(token, eq_index + 1, len(token))
+                }
                 i = i + 1
                 continue
             }
             name := normalize_flag_name(token)
+            if has_key(flags, name) == 1 {
+                errors = push(errors, "duplicate flag: --" + name)
+                i = i + 1
+                continue
+            }
             if contains_name(bool_flags, name) {
                 flags[name] := true
                 i = i + 1
@@ -48,7 +68,7 @@ func parse_args(tokens, bool_flags) {
         positionals = push(positionals, token)
         i = i + 1
     }
-    return {"flags": flags, "positionals": positionals}
+    return {"flags": flags, "positionals": positionals, "errors": errors}
 }
 
 export parse_args := parse_args

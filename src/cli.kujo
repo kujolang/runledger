@@ -9,7 +9,6 @@
 #   1  operational failure (no such run, invalid status, corrupt file)
 #   2  usage error (bad/missing arguments)
 
-from src.util import truthy
 from src.record import new_record, is_valid_status, valid_statuses, empty_usage, empty_cost
 from src.storage import generate_id, save_new, save_update, load, list_records, run_path, write_atomic_text
 from src.gitmeta import start_metadata, end_metadata
@@ -99,6 +98,41 @@ func has_flag(parsed, name) {
     return has_key(parsed["flags"], name) == 1
 }
 
+func includes_name(names, name) {
+    mut i := 0
+    while i < len(names) {
+        if names[i] == name {
+            return true
+        }
+        i = i + 1
+    }
+    return false
+}
+
+# Reject malformed parser input, flags outside a command's public surface, and
+# surplus positionals instead of silently accepting typos or ambiguous input.
+func validate_parsed(parsed, allowed_flags, max_positionals, command) {
+    errors := parsed["errors"]
+    if len(errors) > 0 {
+        print_error(errors[0])
+        print(usage(command))
+        return false
+    }
+    for name in keys(parsed["flags"]) {
+        if includes_name(allowed_flags, name) == false {
+            print_error("unknown flag for " + command + ": --" + name)
+            print(usage(command))
+            return false
+        }
+    }
+    if len(parsed["positionals"]) > max_positionals {
+        print_error("too many arguments for " + command)
+        print(usage(command))
+        return false
+    }
+    return true
+}
+
 # Resolve the ledger directory: --ledger flag, else RUNLEDGER_DIR env, else
 # the conventional ./.runledger in the current working directory.
 func resolve_ledger(parsed) {
@@ -143,6 +177,9 @@ func require_record(ledger, id, where) {
 
 func cmd_start(tokens) {
     parsed := parse_args(tokens, [])
+    if validate_parsed(parsed, ["model", "provider", "task", "prompt", "repo", "ledger"], 0, "start") == false {
+        return 2
+    }
     ledger := resolve_ledger(parsed)
     if type(ledger) == "null" {
         return usage_error(usage("start"))
@@ -158,6 +195,9 @@ func cmd_start(tokens) {
         return usage_error(usage("start"))
     }
     prompt := flag(parsed, "prompt")
+    if type(prompt) != "null" && trim(prompt) == "" {
+        return usage_error(usage("start"))
+    }
 
     id := generate_id(ledger, model, task)
     rec := new_record(id, provider, model, task, prompt, repo)
@@ -193,6 +233,9 @@ func start_commit_label(rec) {
 
 func cmd_finish(tokens) {
     parsed := parse_args(tokens, [])
+    if validate_parsed(parsed, ["status", "verdict", "notes", "repo", "ledger"], 1, "finish") == false {
+        return 2
+    }
     ledger := resolve_ledger(parsed)
     if type(ledger) == "null" {
         return usage_error(usage("finish"))
@@ -203,6 +246,10 @@ func cmd_finish(tokens) {
     }
     rec := require_record(ledger, id, "finish")
     if type(rec) == "null" {
+        return 1
+    }
+    if rec["status"] != "in_progress" {
+        print_error("run is already finished: " + id)
         return 1
     }
 
@@ -235,6 +282,9 @@ func cmd_finish(tokens) {
     }
 
     repo := flag_or(parsed, "repo", rec["repo_path"])
+    if type(repo) != "string" || trim(repo) == "" {
+        return usage_error(usage("finish"))
+    }
     meta := end_metadata(repo)
     rec["end_commit"] := meta["end_commit"]
     rec["git_dirty_end"] := meta["git_dirty_end"]
@@ -264,6 +314,9 @@ func start_or_dash(v) {
 
 func cmd_list(tokens) {
     parsed := parse_args(tokens, ["json"])
+    if validate_parsed(parsed, ["json", "ledger"], 0, "list") == false {
+        return 2
+    }
     ledger := resolve_ledger(parsed)
     if type(ledger) == "null" {
         return usage_error(usage("list"))
@@ -279,6 +332,9 @@ func cmd_list(tokens) {
 
 func cmd_show(tokens) {
     parsed := parse_args(tokens, ["json"])
+    if validate_parsed(parsed, ["json", "ledger"], 1, "show") == false {
+        return 2
+    }
     ledger := resolve_ledger(parsed)
     if type(ledger) == "null" {
         return usage_error(usage("show"))
@@ -301,6 +357,9 @@ func cmd_show(tokens) {
 
 func cmd_note(tokens) {
     parsed := parse_args(tokens, [])
+    if validate_parsed(parsed, ["ledger"], 2, "note") == false {
+        return 2
+    }
     ledger := resolve_ledger(parsed)
     if type(ledger) == "null" {
         return usage_error(usage("note"))
@@ -314,7 +373,7 @@ func cmd_note(tokens) {
         return 1
     }
     text := second_positional(parsed)
-    if type(text) == "null" || text == "" {
+    if type(text) == "null" || trim(text) == "" {
         return usage_error(usage("note-short"))
     }
     rec["notes"] := push(rec["notes"], {"at": now_utc(), "text": text})
@@ -330,6 +389,9 @@ func cmd_note(tokens) {
 
 func cmd_followup(tokens) {
     parsed := parse_args(tokens, [])
+    if validate_parsed(parsed, ["ledger"], 2, "followup") == false {
+        return 2
+    }
     ledger := resolve_ledger(parsed)
     if type(ledger) == "null" {
         return usage_error(usage("followup"))
@@ -343,7 +405,7 @@ func cmd_followup(tokens) {
         return 1
     }
     text := second_positional(parsed)
-    if type(text) == "null" || text == "" {
+    if type(text) == "null" || trim(text) == "" {
         return usage_error(usage("followup-short"))
     }
     rec["followups"] := push(rec["followups"], {"at": now_utc(), "text": text})
@@ -359,6 +421,9 @@ func cmd_followup(tokens) {
 
 func cmd_usage(tokens) {
     parsed := parse_args(tokens, [])
+    if validate_parsed(parsed, ["input", "output", "cache-read", "cache-write", "ledger"], 1, "usage") == false {
+        return 2
+    }
     ledger := resolve_ledger(parsed)
     if type(ledger) == "null" {
         return usage_error(usage("usage"))
@@ -370,6 +435,9 @@ func cmd_usage(tokens) {
     rec := require_record(ledger, id, "usage")
     if type(rec) == "null" {
         return 1
+    }
+    if has_any_flag(parsed, ["input", "output", "cache-read", "cache-write"]) == false {
+        return usage_error(usage("usage"))
     }
     usage := rec["usage"]
     if type(usage) != "dict" {
@@ -412,6 +480,17 @@ func set_int_flags(target, parsed, specs) {
     return {"value": acc}
 }
 
+func has_any_flag(parsed, names) {
+    mut i := 0
+    while i < len(names) {
+        if has_flag(parsed, names[i]) {
+            return true
+        }
+        i = i + 1
+    }
+    return false
+}
+
 func set_int_flag(target, key, value, flag_name) {
     if type(value) == "null" {
         return {"value": target}
@@ -425,6 +504,9 @@ func set_int_flag(target, key, value, flag_name) {
 
 func cmd_cost(tokens) {
     parsed := parse_args(tokens, [])
+    if validate_parsed(parsed, ["total", "currency", "input", "output", "cache", "ledger"], 1, "cost") == false {
+        return 2
+    }
     ledger := resolve_ledger(parsed)
     if type(ledger) == "null" {
         return usage_error(usage("cost"))
@@ -436,6 +518,9 @@ func cmd_cost(tokens) {
     rec := require_record(ledger, id, "cost")
     if type(rec) == "null" {
         return 1
+    }
+    if has_any_flag(parsed, ["total", "currency", "input", "output", "cache"]) == false {
+        return usage_error(usage("cost"))
     }
     cost := rec["cost"]
     if type(cost) != "dict" {
@@ -540,12 +625,18 @@ func is_digit(ch) {
 
 func cmd_compare(tokens) {
     parsed := parse_args(tokens, ["json"])
+    if validate_parsed(parsed, ["task", "json", "ledger"], 0, "compare") == false {
+        return 2
+    }
     ledger := resolve_ledger(parsed)
     if type(ledger) == "null" {
         return usage_error(usage("compare"))
     }
     recs := list_records(ledger)
     task := flag(parsed, "task")
+    if type(task) != "null" && trim(task) == "" {
+        return usage_error(usage("compare"))
+    }
     if type(task) != "null" {
         recs = filter_by_task(recs, task)
     }
@@ -569,18 +660,24 @@ func filter_by_task(records, task) {
 
 func cmd_report(tokens) {
     parsed := parse_args(tokens, [])
+    if validate_parsed(parsed, ["task", "output", "ledger"], 0, "report") == false {
+        return 2
+    }
     ledger := resolve_ledger(parsed)
     if type(ledger) == "null" {
         return usage_error(usage("report"))
     }
     recs := list_records(ledger)
     task := flag(parsed, "task")
+    if type(task) != "null" && trim(task) == "" {
+        return usage_error(usage("report"))
+    }
     if type(task) != "null" {
         recs = filter_by_task(recs, task)
     }
     md := render_report(recs)
     output := flag(parsed, "output")
-    if type(output) != "null" && output == "" {
+    if type(output) != "null" && trim(output) == "" {
         return usage_error(usage("report"))
     }
     if type(output) != "null" && output != "" {
