@@ -91,13 +91,23 @@ expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" finish "$RID" --status pass --ve
 expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" usage "$RID" --input notanint --ledger "$LEDGER"
 expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" cost "$RID" --total notafloat --ledger "$LEDGER"
 expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" cost "$RID" --currency --ledger "$LEDGER"
+expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" list --unknown value --ledger "$LEDGER"
+expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" show "$RID" extra --ledger "$LEDGER"
+expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" list --json=false --ledger "$LEDGER"
+expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" usage "$RID" --ledger "$LEDGER"
+expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" cost "$RID" --ledger "$LEDGER"
+expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" note "$RID" "   " --ledger "$LEDGER"
+expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" followup "$RID" "   " --ledger "$LEDGER"
 expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" nope
 expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" show --ledger "$LEDGER"
 expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" finish --status pass --verdict "missing id" --ledger "$LEDGER"
 expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" start --provider openai --model --task "missing model value" --ledger "$LEDGER"
 expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" start --provider openai --model codex --task "missing repo value" --repo --ledger "$LEDGER"
+expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" start --provider openai --model codex --task "missing prompt value" --prompt --ledger "$LEDGER"
 expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" list --ledger
 expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" report --output --ledger "$LEDGER"
+expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" compare --task --ledger "$LEDGER"
+expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" report --task --ledger "$LEDGER"
 expect_exit 1 env KUJO="$KUJO_BIN" "$RUNLEDGER" show "../escape" --ledger "$LEDGER"
 
 NESTED_LEDGER="$TMPROOT/nested/ledger/path"
@@ -106,11 +116,13 @@ NESTED_RID="$(printf '%s\n' "$NESTED_START" | sed -n '1s/^Started run: //p')"
 [[ -s "$NESTED_LEDGER/runs/$NESTED_RID.json" ]] || fail "nested ledger run file missing"
 
 KUJO="$KUJO_BIN" "$RUNLEDGER" note "$RID" "cli note" --ledger "$LEDGER"
+KUJO="$KUJO_BIN" "$RUNLEDGER" note "$RID" --ledger "$LEDGER" -- "--dash-prefixed note"
 KUJO="$KUJO_BIN" "$RUNLEDGER" followup "$RID" "cli followup" --ledger "$LEDGER"
 KUJO="$KUJO_BIN" "$RUNLEDGER" usage "$RID" --input 10 --output 2 --cache-read 1 --cache-write 0 --ledger "$LEDGER"
 KUJO="$KUJO_BIN" "$RUNLEDGER" cost "$RID" --total 0.5 --currency USD --ledger "$LEDGER"
 printf "delta\n" >> "$REPO/base.txt"
 KUJO="$KUJO_BIN" "$RUNLEDGER" finish "$RID" --status partial --verdict "ok" --ledger "$LEDGER"
+expect_exit 1 env KUJO="$KUJO_BIN" "$RUNLEDGER" finish "$RID" --status fail --verdict "rewritten" --ledger "$LEDGER"
 
 SHOW_JSON="$(KUJO="$KUJO_BIN" "$RUNLEDGER" show "$RID" --json --ledger "$LEDGER")"
 [[ "$SHOW_JSON" == *'"verdict": "ok"'* ]] || fail "show --json missing verdict"
@@ -185,5 +197,16 @@ mkdir -p "$LEDGER/runs/not-a-run.json"
 KUJO="$KUJO_BIN" "$RUNLEDGER" list --ledger "$LEDGER" >/tmp/runledger-cli-list-unreadable.out 2>&1 || fail "list crashed on unreadable file"
 KUJO="$KUJO_BIN" "$RUNLEDGER" report --ledger "$LEDGER" >/tmp/runledger-cli-report-unreadable.out 2>&1 || fail "report crashed on unreadable file"
 chmod 644 "$LEDGER/runs/$UNREADABLE_ID.json"
+
+# Invalid scalar types are normalized to unknown values instead of crashing
+# show/report, and invalid changed-file entries are discarded.
+TYPED_ID="invalid-field-types"
+cat > "$LEDGER/runs/$TYPED_ID.json" <<'JSON'
+{"id":"invalid-field-types","cost":{"currency":[],"total_cost":"oops"},"usage":{"input_tokens":"many"},"changed_files":[1,"valid.txt"]}
+JSON
+TYPED_SHOW="$(KUJO="$KUJO_BIN" "$RUNLEDGER" show "$TYPED_ID" --json --ledger "$LEDGER")"
+[[ "$TYPED_SHOW" == *'"total_cost": null'* ]] || fail "invalid cost was not normalized"
+[[ "$TYPED_SHOW" == *'"valid.txt"'* && "$TYPED_SHOW" != *'"changed_files": [\n    1'* ]] || fail "invalid changed-file entry was not filtered"
+KUJO="$KUJO_BIN" "$RUNLEDGER" report --ledger "$LEDGER" >/tmp/runledger-cli-report-types.out 2>&1 || fail "report crashed on invalid field types"
 
 echo "CLI integration: ok"

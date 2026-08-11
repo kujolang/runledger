@@ -10,7 +10,7 @@ Generated: 2026-05-29T18:24:48Z
 
 ## Cost
 
-Total recorded cost: 2.5 (across 3 run(s)).
+Total recorded cost: 2.5 USD (across 3 run(s)).
 
 ## Runs
 

@@ -2,6 +2,19 @@
 
 All notable changes to RunLedger are documented here.
 
+## [Unreleased]
+
+- Reject command-specific unknown flags instead of silently ignoring typos.
+- Reject surplus positional arguments instead of silently discarding them.
+- Reject ambiguous flag syntax, including duplicate flags and values attached to boolean flags.
+- Honor `--` as an end-of-options marker so note and follow-up text may begin with dashes.
+- Reject missing or blank values for optional value flags such as `--prompt`, `--task`, `--repo`, and `--output`.
+- Reject whitespace-only notes and follow-ups.
+- Reject empty `usage` and `cost` updates that would otherwise report success without changing data.
+- Prevent a terminal run from being finalized again and having its receipt rewritten.
+- Normalize invalid stored token, cost, currency, and changed-file value types instead of crashing render commands.
+- Report cost totals separately by currency rather than adding unlike currencies together.
+
 ## [1.0.0] - 2026-08-08
 
 - Declared local run receipts, manual usage/cost capture, read-only git metadata, comparison, and report contracts stable.

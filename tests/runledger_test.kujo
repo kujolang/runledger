@@ -14,10 +14,11 @@
 # the standard `kujo run` path where module imports work normally.
 
 from src.util import slug, pad_int
+from cli import parse_args
 from src.record import new_record, is_valid_status, valid_statuses, empty_usage, empty_cost, changed_file_count, followup_count
 from src.storage import generate_id, save_new, save_update, load, list_records, exists, ensure_ledger, run_path, is_safe_run_id
 from src.gitmeta import is_repo, head_commit, is_dirty, changed_files, start_metadata, end_metadata
-from src.render import render_report, status_counts, cost_total, cost_label
+from src.render import render_report, status_counts, cost_total, cost_totals_by_currency, cost_label
 
 mut passed := 0
 mut failed := 0
@@ -75,6 +76,17 @@ func test_util() {
     check_eq(pad_int(7, 3), "007", "pad_int zero pads")
     check(len(now_utc()) == 20, "now_utc is 20 chars (….Z)")
     check(ends_with(now_utc(), "Z"), "now_utc ends with Z")
+}
+
+func test_arg_parser() {
+    parsed := parse_args(["run-id", "--ledger", "ledger", "--", "--starts-with-dashes"], [])
+    check_eq(len(parsed["errors"]), 0, "argument separator parses without errors")
+    check_eq(len(parsed["positionals"]), 2, "argument separator preserves later positionals")
+    check_eq(parsed["positionals"][1], "--starts-with-dashes", "argument separator preserves dashed text")
+    bad_bool := parse_args(["--json=false"], ["json"])
+    check_eq(len(bad_bool["errors"]), 1, "boolean flag values are rejected")
+    duplicate := parse_args(["--task", "one", "--task", "two"], [])
+    check_eq(len(duplicate["errors"]), 1, "duplicate flags are rejected")
 }
 
 # --- record: shape + validation ----------------------------------------
@@ -208,6 +220,20 @@ func test_report() {
     weird_md := render_report([weird])
     check(contains(weird_md, "Task \\| Pipe") == 1, "report escapes table pipes")
     check(contains(weird_md, "line pipe\\|ok") == 1, "report flattens multiline table cells")
+
+    eur := new_record("eur", "p", "m", "Task", null, ".")
+    eur_cost := eur["cost"]
+    eur_cost["currency"] := "EUR"
+    eur_cost["total_cost"] := 2.0
+    eur["cost"] := eur_cost
+    usd := new_record("usd", "p", "m", "Task", null, ".")
+    usd_cost := usd["cost"]
+    usd_cost["total_cost"] := 1.0
+    usd["cost"] := usd_cost
+    totals := cost_totals_by_currency([usd, eur])
+    check_eq(len(totals), 2, "cost totals keep currencies separate")
+    mixed_md := render_report([usd, eur])
+    check(contains(mixed_md, "Recorded cost totals by currency:") == 1, "mixed-currency report avoids invalid grand total")
 }
 
 # --- behavior outside a git repo ---------------------------------------
@@ -223,6 +249,7 @@ func test_non_git() {
 # --- run all ------------------------------------------------------------
 setup()
 test_util()
+test_arg_parser()
 test_record()
 test_storage()
 test_lifecycle()

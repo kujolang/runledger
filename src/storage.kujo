@@ -248,7 +248,8 @@ func normalize_record(record) {
         {"key": "followups", "fallback": []},
         {"key": "notes", "fallback": []}
     ])
-    rec = normalize_list_fields(rec, ["changed_files", "commands", "tests", "followups", "notes"])
+    rec = normalize_list_fields(rec, ["commands", "tests", "followups", "notes"])
+    rec["changed_files"] := normalize_string_list(rec["changed_files"])
     rec["usage"] := normalize_usage(rec["usage"])
     rec["cost"] := normalize_cost(rec["cost"])
     return rec
@@ -291,26 +292,46 @@ func normalize_list(value) {
     return []
 }
 
+func normalize_string_list(value) {
+    items := normalize_list(value)
+    mut out := []
+    mut i := 0
+    while i < len(items) {
+        if type(items[i]) == "string" {
+            out = push(out, items[i])
+        }
+        i = i + 1
+    }
+    return out
+}
+
 func normalize_usage(value) {
-    return copy_known_fields(empty_usage(), value, [
+    fields := [
         "input_tokens",
         "output_tokens",
         "cache_read_tokens",
         "cache_write_tokens"
-    ])
+    ]
+    return copy_non_negative_int_fields(empty_usage(), value, fields)
 }
 
 func normalize_cost(value) {
-    return copy_known_fields(empty_cost(), value, [
-        "currency",
+    mut out := copy_non_negative_number_fields(empty_cost(), value, [
         "input_cost",
         "output_cost",
         "cache_cost",
         "total_cost"
     ])
+    if type(value) == "dict" && has_key(value, "currency") == 1 {
+        currency := value["currency"]
+        if type(currency) == "string" && trim(currency) != "" {
+            out["currency"] := currency
+        }
+    }
+    return out
 }
 
-func copy_known_fields(target, source, keys) {
+func copy_non_negative_int_fields(target, source, keys) {
     mut out := target
     if type(source) != "dict" {
         return out
@@ -319,7 +340,29 @@ func copy_known_fields(target, source, keys) {
     while i < len(keys) {
         key := keys[i]
         if has_key(source, key) == 1 {
-            out[key] := source[key]
+            value := source[key]
+            if type(value) == "int" && value >= 0 {
+                out[key] := value
+            }
+        }
+        i = i + 1
+    }
+    return out
+}
+
+func copy_non_negative_number_fields(target, source, keys) {
+    mut out := target
+    if type(source) != "dict" {
+        return out
+    }
+    mut i := 0
+    while i < len(keys) {
+        key := keys[i]
+        if has_key(source, key) == 1 {
+            value := source[key]
+            if (type(value) == "int" || type(value) == "float") && value >= 0 {
+                out[key] := value
+            }
         }
         i = i + 1
     }

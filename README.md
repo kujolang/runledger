@@ -321,6 +321,8 @@ RunLedger does not hardcode provider pricing. Cost is **manual**: you supply
 `--total` (and optionally per-segment `--input` / `--output` / `--cache` costs
 and a `--currency`). This keeps the tool honest and provider-agnostic; pricing
 tables change constantly and don't belong baked into a receipt system.
+Reports aggregate recorded costs per currency; unlike currencies are never
+combined into a dimensionally invalid grand total.
 
 ## Git metadata
 

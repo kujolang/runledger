@@ -253,6 +253,40 @@ export func cost_total(records) {
     return {"total": total, "n": n}
 }
 
+# Aggregate costs without ever adding unlike currencies together.
+export func cost_totals_by_currency(records) {
+    mut totals := []
+    mut i := 0
+    while i < len(records) {
+        cost := records[i]["cost"]
+        if type(cost) == "dict" {
+            total := cost["total_cost"]
+            if type(total) == "int" || type(total) == "float" {
+                currency := display_or(cost["currency"], "USD")
+                totals = add_currency_total(totals, currency, total)
+            }
+        }
+        i = i + 1
+    }
+    return totals
+}
+
+func add_currency_total(totals, currency, amount) {
+    mut out := totals
+    mut i := 0
+    while i < len(out) {
+        if out[i]["currency"] == currency {
+            item := out[i]
+            item["total"] := item["total"] + amount
+            item["n"] := item["n"] + 1
+            out[i] := item
+            return out
+        }
+        i = i + 1
+    }
+    return push(out, {"currency": currency, "total": amount, "n": 1})
+}
+
 # Markdown row helper for the report.
 func md_row(cells) {
     mut escaped := []
@@ -298,12 +332,21 @@ export func render_report(records) {
     ]))
     out = push(out, "")
 
-    ct := cost_total(records)
+    cost_totals := cost_totals_by_currency(records)
     out = append_md_section(out, "Cost")
-    if ct["n"] == 0 {
+    if len(cost_totals) == 0 {
         out = push(out, "No cost data recorded.")
+    } else if len(cost_totals) == 1 {
+        ct := cost_totals[0]
+        out = push(out, "Total recorded cost: " + to_string(ct["total"]) + " " + ct["currency"] + " (across " + to_string(ct["n"]) + " run(s)).")
     } else {
-        out = push(out, "Total recorded cost: " + to_string(ct["total"]) + " (across " + to_string(ct["n"]) + " run(s)).")
+        out = push(out, "Recorded cost totals by currency:")
+        mut ci := 0
+        while ci < len(cost_totals) {
+            ct := cost_totals[ci]
+            out = push(out, "- " + ct["currency"] + ": " + to_string(ct["total"]) + " (across " + to_string(ct["n"]) + " run(s))")
+            ci = ci + 1
+        }
     }
     out = push(out, "")
 
