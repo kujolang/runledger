@@ -22,40 +22,24 @@ VERSION := "1.0.0"
 # ---------------------------------------------------------------------------
 
 func usage(command) {
-    if command == "start" {
-        return "usage: runledger start --model <m> --provider <p> --task <t> [--prompt <file>] [--repo <path>] [--ledger <dir>]"
+    usages := {
+        "start": "usage: runledger start --model <m> --provider <p> --task <t> [--prompt <file>] [--repo <path>] [--ledger <dir>]",
+        "finish": "usage: runledger finish <run-id> --status <pass|partial|fail|abandoned> --verdict \"text\" [--notes <text>] [--repo <path>] [--ledger <dir>]",
+        "list": "usage: runledger list [--json] [--ledger <dir>]",
+        "show": "usage: runledger show <run-id> [--json] [--ledger <dir>]",
+        "note": "usage: runledger note <run-id> \"note text\" [--ledger <dir>]",
+        "note-short": "usage: runledger note <run-id> \"note text\"",
+        "followup": "usage: runledger followup <run-id> \"follow-up text\" [--ledger <dir>]",
+        "followup-short": "usage: runledger followup <run-id> \"follow-up text\"",
+        "usage": "usage: runledger usage <run-id> [--input N] [--output N] [--cache-read N] [--cache-write N] [--ledger <dir>]",
+        "cost": "usage: runledger cost <run-id> [--total N] [--currency CODE] [--input N] [--output N] [--cache N] [--ledger <dir>]",
+        "compare": "usage: runledger compare [--task <name>] [--json] [--ledger <dir>]",
+        "report": "usage: runledger report [--task <name>] [--output <file>] [--ledger <dir>]"
     }
-    if command == "finish" {
-        return "usage: runledger finish <run-id> --status <pass|partial|fail|abandoned> --verdict \"text\" [--notes <text>] [--repo <path>] [--ledger <dir>]"
+    if has_key(usages, command) == 1 {
+        return usages[command]
     }
-    if command == "list" {
-        return "usage: runledger list [--json] [--ledger <dir>]"
-    }
-    if command == "show" {
-        return "usage: runledger show <run-id> [--json] [--ledger <dir>]"
-    }
-    if command == "note" {
-        return "usage: runledger note <run-id> \"note text\" [--ledger <dir>]"
-    }
-    if command == "note-short" {
-        return "usage: runledger note <run-id> \"note text\""
-    }
-    if command == "followup" {
-        return "usage: runledger followup <run-id> \"follow-up text\" [--ledger <dir>]"
-    }
-    if command == "followup-short" {
-        return "usage: runledger followup <run-id> \"follow-up text\""
-    }
-    if command == "usage" {
-        return "usage: runledger usage <run-id> [--input N] [--output N] [--cache-read N] [--cache-write N] [--ledger <dir>]"
-    }
-    if command == "cost" {
-        return "usage: runledger cost <run-id> [--total N] [--currency CODE] [--input N] [--output N] [--cache N] [--ledger <dir>]"
-    }
-    if command == "compare" {
-        return "usage: runledger compare [--task <name>] [--json] [--ledger <dir>]"
-    }
-    return "usage: runledger report [--task <name>] [--output <file>] [--ledger <dir>]"
+    return usages["report"]
 }
 
 func usage_error(text) {

@@ -306,8 +306,12 @@ func md_escape(value) {
     return s
 }
 
-func append_md_section(out, title) {
-    return push_lines(out, ["## " + title, ""])
+func append_md_heading(out, marker, title) {
+    return push_lines(out, [marker + " " + title, ""])
+}
+
+func append_md_table_header(out, headers, alignments) {
+    return push_lines(out, [md_row(headers), md_row(alignments)])
 }
 
 # Full markdown report.
@@ -320,9 +324,11 @@ export func render_report(records) {
         "Generated: " + format_date(now(), "YYYY-MM-DDTHH:mm:ssZ"),
         ""
     ])
-    out = append_md_section(out, "Summary")
-    out = push(out, md_row(["Runs", "Pass", "Partial", "Fail", "Abandoned"]))
-    out = push(out, md_row(["---:", "---:", "---:", "---:", "---:"]))
+    out = append_md_heading(out, "##", "Summary")
+    out = append_md_table_header(out,
+        ["Runs", "Pass", "Partial", "Fail", "Abandoned"],
+        ["---:", "---:", "---:", "---:", "---:"]
+    )
     out = push(out, md_row([
         to_string(len(records)),
         to_string(counts["pass"]),
@@ -333,7 +339,7 @@ export func render_report(records) {
     out = push(out, "")
 
     cost_totals := cost_totals_by_currency(records)
-    out = append_md_section(out, "Cost")
+    out = append_md_heading(out, "##", "Cost")
     if len(cost_totals) == 0 {
         out = push(out, "No cost data recorded.")
     } else if len(cost_totals) == 1 {
@@ -350,19 +356,21 @@ export func render_report(records) {
     }
     out = push(out, "")
 
-    out = append_md_section(out, "Runs")
-    out = push(out, md_row(["ID", "Task", "Provider", "Model", "Status", "Verdict", "Changed files", "Follow-ups", "Cost"]))
-    out = push(out, md_row(["---", "---", "---", "---", "---", "---", "---:", "---:", "---:"]))
+    out = append_md_heading(out, "##", "Runs")
+    out = append_md_table_header(out,
+        ["ID", "Task", "Provider", "Model", "Status", "Verdict", "Changed files", "Follow-ups", "Cost"],
+        ["---", "---", "---", "---", "---", "---", "---:", "---:", "---:"]
+    )
     out = append_run_rows(out, records)
     out = push(out, "")
 
-    out = append_md_section(out, "Runs by task")
+    out = append_md_heading(out, "##", "Runs by task")
     out = append_runs_by_task(out, records)
 
-    out = append_md_section(out, "Follow-ups")
+    out = append_md_heading(out, "##", "Follow-ups")
     out = append_grouped(out, records, "followups")
 
-    out = append_md_section(out, "Notes")
+    out = append_md_heading(out, "##", "Notes")
     out = append_grouped(out, records, "notes")
 
     return join(out, "\n")
@@ -397,8 +405,7 @@ func append_runs_by_task(out, records) {
     mut ti := 0
     while ti < len(tasks) {
         task := tasks[ti]
-        acc = push(acc, "### " + task)
-        acc = push(acc, "")
+        acc = append_md_heading(acc, "###", task)
         mut ri := 0
         while ri < len(records) {
             r := records[ri]
@@ -424,8 +431,7 @@ func append_grouped(out, records, field) {
         items := r[field]
         if len(items) > 0 {
             any = true
-            acc = push(acc, "### " + display(r["id"]))
-            acc = push(acc, "")
+            acc = append_md_heading(acc, "###", display(r["id"]))
             mut j := 0
             while j < len(items) {
                 acc = push(acc, "- " + entry_text(items[j]))
