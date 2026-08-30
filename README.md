@@ -53,12 +53,12 @@ prioritizes:
 - explicit exit codes for automation,
 - defensive loading of partial or malformed run files,
 - safe run-id handling so user-supplied IDs cannot escape the ledger directory,
+- per-record ownership locks for conflict-safe concurrent mutations,
 - markdown report output that stays stable when user text contains table
   punctuation.
 
 The next major robustness frontier is optional higher-level workflow capture:
-recording commands/tests, adding machine-readable report metadata, and adding
-coordination safeguards if multiple writers target the same ledger at once.
+recording commands/tests and adding machine-readable report metadata.
 
 ## Installation
 
@@ -200,12 +200,29 @@ invalid status fails with a clear error and a non-zero exit code.
 - `1` operational failure (no such run, invalid status, corrupt file)
 - `2` usage error (bad/missing arguments, unknown command, invalid numeric flag value)
 
+## Concurrent writers
+
+The mutating commands (`finish`, `note`, `followup`, `usage`, and `cost`)
+serialize each receipt's complete read-modify-write transaction through
+`<ledger>/locks/<run-id>.lock`. Writers targeting different receipts remain
+independent. Concurrent `start` commands atomically retry ID allocation when
+they select the same candidate. Read-only commands do not acquire locks.
+
+A writer waits up to 10 seconds by default. Set
+`RUNLEDGER_LOCK_TIMEOUT_MS` to an integer from `10` through `60000` to choose a
+different bound. A timeout exits 1 and names the exact lock file; it never
+removes a lock owned by another process. If a process is interrupted while it
+owns a lock, confirm no writer for that receipt remains active before removing
+that named stale lock. The next mutation will then proceed normally.
+
 ## Where data is stored
 
 By default RunLedger writes to `./.runledger/` in your current directory:
 
 ```text
 .runledger/
+  locks/
+    2026-05-29-codex-build-tool-x-001.lock  # present only during a mutation
   runs/
     2026-05-29-claude-opus-4-8-build-tool-x-001.json
     2026-05-29-codex-build-tool-x-001.json
@@ -344,7 +361,8 @@ kujo run tests/runledger_test.kujo
 The suite is filesystem-isolated (it uses a throwaway ledger and a throwaway git
 repo under the system temp dir), needs no network or API key, and exits non-zero
 on any failure. `tests/run.sh` runs both the module-level Kujo test harness and
-CLI integration checks through `bin/runledger`.
+CLI integration checks through `bin/runledger`, including concurrent-writer and
+lock-ownership regression cases.
 
 ## Limitations
 
@@ -358,6 +376,9 @@ CLI integration checks through `bin/runledger`.
 - Run files are plain JSON; editing them by hand is supported. RunLedger
   tolerates missing fields, rejects mismatched run IDs, and skips invalid run
   files during list/report operations.
+- An interrupted mutating process can leave its sidecar lock behind. RunLedger
+  reports the exact path and requires deliberate operator recovery rather than
+  guessing that another writer's lock is stale.
 
 ## Non-goals
 
@@ -386,21 +407,18 @@ runledger/
   examples/
     build-tool-x.md             # sample prompt
     RUNLEDGER_REPORT.example.md  # sample generated report
-  docs/reviews/
-    BUG_HUNT_REPORT.md
-    CODEX_REVIEW_RUNLEDGER.md
-    RUNLEDGER_ENTERPRISE_REVIEW_2026-06-19.md
+  docs/audits/
+    repository-hardening.md      # evidence-backed hardening receipt
   .agent/
     next-agent-guide.md
-    session-notes.md
 ```
 
 ## Contributor notes
 
 Canonical copyable examples live in this README and
 `examples/build-tool-x.md`. `examples/RUNLEDGER_REPORT.example.md` is a sample
-generated report for output shape. Historical and follow-up review artifacts
-live under `docs/reviews/`.
+generated report for output shape. The current hardening evidence lives under
+`docs/audits/`.
 
 For repo sweeps, exclude generated/bulk paths such as `.runledger/` and avoid
 treating generated report output as source examples unless the task explicitly

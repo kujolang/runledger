@@ -4,6 +4,9 @@ All notable changes to RunLedger are documented here.
 
 ## [Unreleased]
 
+- Serialize receipt mutations with per-record ownership locks so concurrent CLI updates cannot silently overwrite one another.
+- Retry run-ID allocation when concurrent `start` commands select the same candidate.
+- Bound lock waits and report an actionable stale-lock recovery path through `RUNLEDGER_LOCK_TIMEOUT_MS`.
 - Use the Kujo runtime's collision-resistant, durable atomic-write primitive for receipts and reports.
 - Return a concise operational error when a report output cannot be written instead of surfacing an unhandled runtime failure.
 - Convert run-file read and parse failures into the documented corrupt/unreadable record errors.

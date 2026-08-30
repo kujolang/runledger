@@ -10,7 +10,7 @@
 #   2  usage error (bad/missing arguments)
 
 from src.record import new_record, is_valid_status, valid_statuses, empty_usage, empty_cost
-from src.storage import generate_id, save_new, save_update, load, list_records, run_path, write_atomic_text
+from src.storage import generate_id, save_new, load, list_records, run_path, write_atomic_text, update_record
 from src.gitmeta import start_metadata, end_metadata
 from src.render import render_list, render_show, render_compare, render_report
 from cli import parse_args
@@ -183,14 +183,22 @@ func cmd_start(tokens) {
         return usage_error(usage("start"))
     }
 
-    id := generate_id(ledger, model, task)
-    rec := new_record(id, provider, model, task, prompt, repo)
-
     meta := start_metadata(repo)
-    rec["start_commit"] := meta["start_commit"]
-    rec["git_dirty_start"] := meta["git_dirty_start"]
-
-    res := save_new(ledger, rec)
+    mut id := ""
+    mut rec := null
+    mut res := {"error": "could not allocate a unique run id"}
+    mut attempts := 0
+    while attempts < 100 {
+        id = generate_id(ledger, model, task)
+        rec = new_record(id, provider, model, task, prompt, repo)
+        rec["start_commit"] := meta["start_commit"]
+        rec["git_dirty_start"] := meta["git_dirty_start"]
+        res = save_new(ledger, rec)
+        if has_key(res, "error") == 0 || has_key(res, "conflict") == 0 {
+            break
+        }
+        attempts = attempts + 1
+    }
     if has_key(res, "error") == 1 {
         print_error(res["error"])
         return 1
@@ -228,15 +236,6 @@ func cmd_finish(tokens) {
     if type(id) == "null" || id == "" {
         return usage_error(usage("finish"))
     }
-    rec := require_record(ledger, id, "finish")
-    if type(rec) == "null" {
-        return 1
-    }
-    if rec["status"] != "in_progress" {
-        print_error("run is already finished: " + id)
-        return 1
-    }
-
     status := flag(parsed, "status")
     if type(status) == "null" || trim(status) == "" {
         return usage_error(usage("finish"))
@@ -249,37 +248,42 @@ func cmd_finish(tokens) {
         print_error("finish requires a terminal status: pass, partial, fail, or abandoned")
         return 2
     }
-    rec["status"] := status
-
     verdict := flag(parsed, "verdict")
     if type(verdict) == "null" || trim(verdict) == "" {
         return usage_error(usage("finish"))
     }
-    rec["verdict"] := verdict
-
     notes := flag(parsed, "notes")
     if type(notes) != "null" && trim(notes) == "" {
         return usage_error(usage("finish"))
     }
-    if type(notes) != "null" {
-        rec["notes"] := push(rec["notes"], {"at": now_utc(), "text": notes})
-    }
-
-    repo := flag_or(parsed, "repo", rec["repo_path"])
-    if type(repo) != "string" || trim(repo) == "" {
-        return usage_error(usage("finish"))
-    }
-    meta := end_metadata(repo)
-    rec["end_commit"] := meta["end_commit"]
-    rec["git_dirty_end"] := meta["git_dirty_end"]
-    rec["changed_files"] := meta["changed_files"]
-
-    touch(rec)
-    res := save_update(ledger, rec)
+    res := update_record(ledger, id, func(rec) {
+        if rec["status"] != "in_progress" {
+            return {"error": "run is already finished: " + id}
+        }
+        rec["status"] := status
+        rec["verdict"] := verdict
+        if type(notes) != "null" {
+            rec["notes"] := push(rec["notes"], {"at": now_utc(), "text": notes})
+        }
+        repo := flag_or(parsed, "repo", rec["repo_path"])
+        if type(repo) != "string" || trim(repo) == "" {
+            return {"error": usage("finish"), "usage_error": true}
+        }
+        meta := end_metadata(repo)
+        rec["end_commit"] := meta["end_commit"]
+        rec["git_dirty_end"] := meta["git_dirty_end"]
+        rec["changed_files"] := meta["changed_files"]
+        touch(rec)
+        return {"record": rec}
+    })
     if has_key(res, "error") == 1 {
+        if has_key(res, "usage_error") == 1 {
+            return usage_error(res["error"])
+        }
         print_error(res["error"])
         return 1
     }
+    rec := res["record"]
     print_lines([
         "Finished run: " + id,
         "  status:       " + "${rec["status"]}",
@@ -352,17 +356,15 @@ func cmd_note(tokens) {
     if type(id) == "null" || id == "" {
         return usage_error(usage("note-short"))
     }
-    rec := require_record(ledger, id, "note")
-    if type(rec) == "null" {
-        return 1
-    }
     text := second_positional(parsed)
     if type(text) == "null" || trim(text) == "" {
         return usage_error(usage("note-short"))
     }
-    rec["notes"] := push(rec["notes"], {"at": now_utc(), "text": text})
-    touch(rec)
-    res := save_update(ledger, rec)
+    res := update_record(ledger, id, func(rec) {
+        rec["notes"] := push(rec["notes"], {"at": now_utc(), "text": text})
+        touch(rec)
+        return {"record": rec}
+    })
     if has_key(res, "error") == 1 {
         print_error(res["error"])
         return 1
@@ -384,17 +386,15 @@ func cmd_followup(tokens) {
     if type(id) == "null" || id == "" {
         return usage_error(usage("followup-short"))
     }
-    rec := require_record(ledger, id, "followup")
-    if type(rec) == "null" {
-        return 1
-    }
     text := second_positional(parsed)
     if type(text) == "null" || trim(text) == "" {
         return usage_error(usage("followup-short"))
     }
-    rec["followups"] := push(rec["followups"], {"at": now_utc(), "text": text})
-    touch(rec)
-    res := save_update(ledger, rec)
+    res := update_record(ledger, id, func(rec) {
+        rec["followups"] := push(rec["followups"], {"at": now_utc(), "text": text})
+        touch(rec)
+        return {"record": rec}
+    })
     if has_key(res, "error") == 1 {
         print_error(res["error"])
         return 1
@@ -416,33 +416,32 @@ func cmd_usage(tokens) {
     if type(id) == "null" || id == "" {
         return usage_error(usage("usage"))
     }
-    rec := require_record(ledger, id, "usage")
-    if type(rec) == "null" {
-        return 1
-    }
     if has_any_flag(parsed, ["input", "output", "cache-read", "cache-write"]) == false {
         return usage_error(usage("usage"))
     }
-    usage := rec["usage"]
-    if type(usage) != "dict" {
-        usage = empty_usage()
-    }
-    res := set_int_flags(usage, parsed, [
-        {"key": "input_tokens", "flag": "input"},
-        {"key": "output_tokens", "flag": "output"},
-        {"key": "cache_read_tokens", "flag": "cache-read"},
-        {"key": "cache_write_tokens", "flag": "cache-write"}
-    ])
+    res := update_record(ledger, id, func(rec) {
+        usage := rec["usage"]
+        if type(usage) != "dict" {
+            usage = empty_usage()
+        }
+        update := set_int_flags(usage, parsed, [
+            {"key": "input_tokens", "flag": "input"},
+            {"key": "output_tokens", "flag": "output"},
+            {"key": "cache_read_tokens", "flag": "cache-read"},
+            {"key": "cache_write_tokens", "flag": "cache-write"}
+        ])
+        if has_key(update, "error") == 1 {
+            return {"error": update["error"], "usage_error": true}
+        }
+        rec["usage"] := update["value"]
+        touch(rec)
+        return {"record": rec}
+    })
     if has_key(res, "error") == 1 {
         print_error(res["error"])
-        return 2
-    }
-    usage = res["value"]
-    rec["usage"] := usage
-    touch(rec)
-    update_res := save_update(ledger, rec)
-    if has_key(update_res, "error") == 1 {
-        print_error(update_res["error"])
+        if has_key(res, "usage_error") == 1 {
+            return 2
+        }
         return 1
     }
     print("Updated usage for " + id)
@@ -499,40 +498,39 @@ func cmd_cost(tokens) {
     if type(id) == "null" || id == "" {
         return usage_error(usage("cost"))
     }
-    rec := require_record(ledger, id, "cost")
-    if type(rec) == "null" {
-        return 1
-    }
     if has_any_flag(parsed, ["total", "currency", "input", "output", "cache"]) == false {
         return usage_error(usage("cost"))
-    }
-    cost := rec["cost"]
-    if type(cost) != "dict" {
-        cost = empty_cost()
     }
     currency := flag(parsed, "currency")
     if type(currency) != "null" && trim(currency) == "" {
         return usage_error(usage("cost"))
     }
-    if type(currency) != "null" {
-        cost["currency"] := currency
-    }
-    res := set_float_flags(cost, parsed, [
-        {"key": "input_cost", "flag": "input"},
-        {"key": "output_cost", "flag": "output"},
-        {"key": "cache_cost", "flag": "cache"},
-        {"key": "total_cost", "flag": "total"}
-    ])
+    res := update_record(ledger, id, func(rec) {
+        cost := rec["cost"]
+        if type(cost) != "dict" {
+            cost = empty_cost()
+        }
+        if type(currency) != "null" {
+            cost["currency"] := currency
+        }
+        update := set_float_flags(cost, parsed, [
+            {"key": "input_cost", "flag": "input"},
+            {"key": "output_cost", "flag": "output"},
+            {"key": "cache_cost", "flag": "cache"},
+            {"key": "total_cost", "flag": "total"}
+        ])
+        if has_key(update, "error") == 1 {
+            return {"error": update["error"], "usage_error": true}
+        }
+        rec["cost"] := update["value"]
+        touch(rec)
+        return {"record": rec}
+    })
     if has_key(res, "error") == 1 {
         print_error(res["error"])
-        return 2
-    }
-    cost = res["value"]
-    rec["cost"] := cost
-    touch(rec)
-    update_res := save_update(ledger, rec)
-    if has_key(update_res, "error") == 1 {
-        print_error(update_res["error"])
+        if has_key(res, "usage_error") == 1 {
+            return 2
+        }
         return 1
     }
     print("Updated cost for " + id)

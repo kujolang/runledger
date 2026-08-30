@@ -16,7 +16,7 @@
 from src.util import slug, pad_int
 from cli import parse_args
 from src.record import new_record, is_valid_status, valid_statuses, empty_usage, empty_cost, changed_file_count, followup_count
-from src.storage import generate_id, save_new, save_update, load, list_records, exists, ensure_ledger, run_path, is_safe_run_id
+from src.storage import generate_id, save_new, save_update, load, list_records, exists, ensure_ledger, run_path, is_safe_run_id, acquire_record_lock, release_record_lock
 from src.gitmeta import is_repo, head_commit, is_dirty, changed_files, start_metadata, end_metadata
 from src.render import render_report, status_counts, cost_total, cost_totals_by_currency, cost_label
 
@@ -130,6 +130,13 @@ func test_storage() {
     # round-trip load
     back := load(LEDGER, id)
     check_eq(back["id"], id, "loaded id matches")
+    lock := acquire_record_lock(LEDGER, id)
+    check(has_key(lock, "ok") == 1, "record lock can be acquired")
+    wrong_release := release_record_lock({"path": lock["path"], "token": "not-the-owner"})
+    check(has_key(wrong_release, "error") == 1, "record lock rejects non-owner release")
+    check(file_exists(lock["path"]), "non-owner release preserves the lock")
+    release_res := release_record_lock(lock)
+    check(has_key(release_res, "ok") == 1 && file_exists(lock["path"]) == false, "record lock owner releases the lock")
     unsafe := new_record("../escape", "p", "m", "t", null, ".")
     unsafe_res := save_new(LEDGER, unsafe)
     check(has_key(unsafe_res, "error") == 1 && len(unsafe_res["error"]) > 0, "save_new rejects unsafe ids")

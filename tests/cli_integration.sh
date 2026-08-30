@@ -73,6 +73,19 @@ EOF
 )"
 [[ "$HELP_OUT" == "$EXPECTED_HELP" ]] || fail "help output changed unexpectedly"
 
+# Concurrent starts for the same model/task must retry ID allocation rather
+# than clobbering a receipt or failing one of the writers.
+START_RACE_LEDGER="$TMPROOT/start-race-ledger"
+for i in $(seq 1 12); do
+  KUJO="$KUJO_BIN" "$RUNLEDGER" start --provider openai --model codex --task "Concurrent Start" --repo "$PLAIN" --ledger "$START_RACE_LEDGER" >"$TMPROOT/parallel-start-$i.out" 2>&1 &
+done
+wait
+START_RACE_COUNT="$(find "$START_RACE_LEDGER/runs" -type f -name '*.json' | wc -l | tr -d ' ')"
+[[ "$START_RACE_COUNT" -eq 12 ]] || fail "concurrent starts did not create 12 unique receipts (got $START_RACE_COUNT)"
+if grep -l '^error:' "$TMPROOT"/parallel-start-*.out >/dev/null; then
+  fail "a concurrent start failed instead of retrying ID allocation"
+fi
+
 git -C "$REPO" init -q
 git -C "$REPO" config user.email test@example.com
 git -C "$REPO" config user.name runledger-test
@@ -117,6 +130,28 @@ NESTED_RID="$(printf '%s\n' "$NESTED_START" | sed -n '1s/^Started run: //p')"
 
 KUJO="$KUJO_BIN" "$RUNLEDGER" note "$RID" "cli note" --ledger "$LEDGER"
 KUJO="$KUJO_BIN" "$RUNLEDGER" note "$RID" --ledger "$LEDGER" -- "--dash-prefixed note"
+
+# Concurrent read-modify-write commands must serialize without losing entries.
+for i in $(seq 1 12); do
+  KUJO="$KUJO_BIN" "$RUNLEDGER" note "$RID" "parallel-note-$i" --ledger "$LEDGER" >"$TMPROOT/parallel-note-$i.out" 2>&1 &
+done
+wait
+PARALLEL_SHOW="$(KUJO="$KUJO_BIN" "$RUNLEDGER" show "$RID" --json --ledger "$LEDGER")"
+PARALLEL_COUNT="$(printf '%s\n' "$PARALLEL_SHOW" | grep -c '"text": "parallel-note-')"
+[[ "$PARALLEL_COUNT" -eq 12 ]] || fail "concurrent notes were lost (expected 12, got $PARALLEL_COUNT)"
+if find "$LEDGER/locks" -type f -print -quit | grep -q .; then
+  fail "record lock remained after successful concurrent updates"
+fi
+
+# A pre-existing lock produces a bounded, actionable conflict and is never
+# deleted by a process that does not own it.
+LOCK_PATH="$LEDGER/locks/$RID.lock"
+printf '%s\n' '{"token":"other-writer","run_id":"held","created_at":"2026-08-30T00:00:00Z"}' > "$LOCK_PATH"
+expect_exit 1 env RUNLEDGER_LOCK_TIMEOUT_MS=25 KUJO="$KUJO_BIN" "$RUNLEDGER" note "$RID" "must-not-write" --ledger "$LEDGER"
+grep -q '^error: run is busy:' /tmp/runledger-cli-last.out || fail "lock conflict was not actionable"
+[[ -f "$LOCK_PATH" ]] || fail "non-owner removed an active record lock"
+rm -f "$LOCK_PATH"
+
 KUJO="$KUJO_BIN" "$RUNLEDGER" followup "$RID" "cli followup" --ledger "$LEDGER"
 KUJO="$KUJO_BIN" "$RUNLEDGER" usage "$RID" --input 10 --output 2 --cache-read 1 --cache-write 0 --ledger "$LEDGER"
 KUJO="$KUJO_BIN" "$RUNLEDGER" cost "$RID" --total 0.5 --currency USD --ledger "$LEDGER"

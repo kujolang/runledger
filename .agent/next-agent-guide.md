@@ -14,9 +14,11 @@
 - Core receipt workflow is working: start, finish, list, show/json, note,
   followup, usage, cost, compare, report.
 - Writes are atomic for records and reports.
+- Receipt mutations serialize through per-record ownership locks; concurrent
+  writers are covered by the CLI integration suite.
 - CLI input validation now maps bad numeric values to usage errors.
 - Run-id loading is path-safe and rejects mismatched JSON record IDs.
-- Historical reviews and next-session review notes live under `docs/reviews/`.
+- The current evidence-backed hardening receipt lives under `docs/audits/`.
 
 ## Files likely to touch next
 
@@ -24,8 +26,7 @@
 - `src/storage.kujo` for persistence guarantees.
 - `tests/cli_integration.sh` for CLI behavior coverage.
 - `README.md` for operator-facing behavior.
-- `docs/reviews/RUNLEDGER_ENTERPRISE_REVIEW_2026-06-19.md` for the latest
-  prioritized follow-up list.
+- `docs/audits/repository-hardening.md` for the latest verified audit state.
 
 ## Known constraints
 
@@ -33,4 +34,5 @@
 - Cost and token data remain manual by design.
 - `commands` and `tests` fields in run records are still reserved and not
   populated by current CLI commands.
-- There is no lock-file coordination yet for concurrent writers.
+- Interrupted writers can leave an owned sidecar lock; follow the deliberate
+  stale-lock recovery procedure documented in the README.

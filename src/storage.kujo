@@ -13,6 +13,13 @@ export func runs_dir(ledger_dir) {
     return join_path(ledger_dir, "runs")
 }
 
+# Per-record locks serialize CLI read-modify-write transactions. Lock files are
+# deliberately separate from run JSON so listings and direct receipt readers
+# keep their existing contract.
+export func locks_dir(ledger_dir) {
+    return join_path(ledger_dir, "locks")
+}
+
 # Full path to a single run's JSON file.
 export func run_path(ledger_dir, id) {
     return join_path(runs_dir(ledger_dir), id + ".json")
@@ -106,6 +113,143 @@ export func ensure_ledger(ledger_dir) {
     return rd
 }
 
+func record_lock_path(ledger_dir, id) {
+    return join_path(locks_dir(ledger_dir), id + ".lock")
+}
+
+func record_lock_timeout_ms() {
+    raw := env_or("RUNLEDGER_LOCK_TIMEOUT_MS", "10000")
+    mut value := 10000
+    try {
+        value = parse_int(trim(raw))
+    } except parse_error {
+        return 10000
+    }
+    if value < 10 || value > 60000 {
+        return 10000
+    }
+    return value
+}
+
+# Acquire one record lock with bounded waiting. The atomic no-overwrite create
+# is the ownership decision: only one process can receive the token. A lock
+# left by an interrupted process is never guessed stale; the error names the
+# exact file so an operator can inspect/remove it after confirming no writer is
+# active.
+export func acquire_record_lock(ledger_dir, id) {
+    if is_safe_run_id(id) == false {
+        return {"error": "invalid run id: " + "${id}"}
+    }
+    ensure_dir_tree(locks_dir(ledger_dir))
+    path := record_lock_path(ledger_dir, id)
+    token := id + "-" + to_string(current_timestamp()) + "-" + to_string(random_int(100000, 999999))
+    started_at := current_timestamp()
+    timeout_ms := record_lock_timeout_ms()
+    while current_timestamp() - started_at <= timeout_ms {
+        payload := to_json({
+            "token": token,
+            "run_id": id,
+            "created_at": now_utc()
+        })
+        try {
+            write_file_atomic(path, payload, false)
+            return {"ok": true, "path": path, "token": token}
+        } except lock_error {
+            sleep(10)
+        }
+    }
+    return {
+        "error": "run is busy: " + id + "; retry after the active writer finishes. If no writer is active, inspect and remove stale lock: " + path
+    }
+}
+
+# Release only the lock carrying the caller's token. Ownership loss is surfaced
+# instead of deleting another process's lock.
+export func release_record_lock(lock) {
+    path := lock["path"]
+    token := lock["token"]
+    if file_exists(path) == false {
+        return {"ok": true}
+    }
+    mut raw := ""
+    mut payload := null
+    try {
+        raw = read_file(path)
+    } except read_error {
+        return {"error": "cannot verify record lock ownership: " + path}
+    }
+    try {
+        payload = parse_json(raw)
+    } except parse_error {
+        return {"error": "cannot verify record lock ownership: " + path}
+    }
+    if type(payload) != "dict" || has_key(payload, "token") == 0 || payload["token"] != token {
+        return {"error": "record lock ownership changed before release: " + path}
+    }
+    try {
+        delete_file(path)
+    } except delete_error {
+        return {"error": "cannot release record lock: " + path}
+    }
+    return {"ok": true}
+}
+
+func release_or_result(lock, result) {
+    release_res := release_record_lock(lock)
+    if has_key(release_res, "error") == 1 {
+        return {"error": "record lock cleanup failed: " + release_res["error"]}
+    }
+    return result
+}
+
+# Execute a complete record mutation under one lock. The record is loaded only
+# after ownership is acquired, so each updater sees the prior committed write.
+# `updater` returns {"record": record} or an {"error": ...} result.
+export func update_record(ledger_dir, id, updater) {
+    lock := acquire_record_lock(ledger_dir, id)
+    if has_key(lock, "error") == 1 {
+        return lock
+    }
+
+    rec := load(ledger_dir, id)
+    if type(rec) == "null" {
+        return release_or_result(lock, {"error": "no such run: " + id})
+    }
+    if type(rec) == "dict" && has_key(rec, "error") == 1 {
+        return release_or_result(lock, rec)
+    }
+
+    mut result := null
+    try {
+        result = updater(rec)
+    } except update_error {
+        return release_or_result(lock, {"error": "record update failed: " + id + ": " + "${update_error}"})
+    }
+    if type(result) != "dict" {
+        return release_or_result(lock, {"error": "record updater returned " + type(result) + " for run: " + id})
+    }
+    if has_key(result, "error") == 1 {
+        return release_or_result(lock, result)
+    }
+    if has_key(result, "record") == 0 || type(result["record"]) != "dict" {
+        return release_or_result(lock, {"error": "record updater returned no record for run: " + id})
+    }
+
+    save_res := save_update(ledger_dir, result["record"])
+    if has_key(save_res, "error") == 1 {
+        return release_or_result(lock, save_res)
+    }
+    release_res := release_record_lock(lock)
+    if has_key(release_res, "error") == 1 {
+        return {
+            "error": "record update committed, but lock cleanup failed: " + release_res["error"] + "; inspect the receipt before retrying",
+            "committed": true
+        }
+    }
+    result["ok"] := save_res["ok"]
+    return result
+}
+
 # True if a run with this id already exists on disk.
 export func exists(ledger_dir, id) {
     if is_safe_run_id(id) == false {
@@ -141,7 +285,7 @@ export func save_new(ledger_dir, record) {
     ensure_ledger(ledger_dir)
     path := run_path(ledger_dir, record["id"])
     if file_exists(path) {
-        return {"error": "run already exists: " + record["id"]}
+        return {"error": "run already exists: " + record["id"], "conflict": true}
     }
     # The no-overwrite runtime operation closes the check/write race: if
     # another process creates this run after the check above, this write fails
@@ -150,14 +294,16 @@ export func save_new(ledger_dir, record) {
         write_file_atomic(path, to_json_pretty(record), false)
     } except error {
         if file_exists(path) {
-            return {"error": "run already exists: " + record["id"]}
+            return {"error": "run already exists: " + record["id"], "conflict": true}
         }
         return {"error": "cannot write run file: " + path + ": " + "${error}"}
     }
     return {"ok": path}
 }
 
-# Persist updates to an existing record (replaces in place).
+# Low-level persistence for an already-owned record (replaces in place).
+# Read-modify-write callers must use update_record so the load and save share
+# one ownership boundary.
 export func save_update(ledger_dir, record) {
     if is_safe_run_id(record["id"]) == false {
         return {"error": "invalid run id: " + "${record["id"]}"}
