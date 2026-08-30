@@ -84,16 +84,17 @@ func parent_dir(path) {
     return "."
 }
 
-# Write `content` to `path` atomically within the same directory by writing to a
-# temporary sibling path and renaming into place.
+# Write `content` to `path` atomically with the runtime primitive. The runtime
+# uses a unique sibling file, syncs it, and promotes it atomically, avoiding
+# collisions between writes that happen in the same clock tick.
 export func write_atomic_text(path, content) {
     ensure_dir_tree(parent_dir(path))
-    tmp := path + ".tmp-" + to_string(now())
-    if file_exists(tmp) {
-        delete_file(tmp)
+    try {
+        write_file_atomic(path, content, true)
+        return {"ok": path}
+    } except error {
+        return {"error": "cannot write file: " + path + ": " + "${error}"}
     }
-    write_file(tmp, content)
-    rename_file(tmp, path)
 }
 
 # Create the ledger directory tree if it does not already exist. Safe to call
@@ -142,7 +143,17 @@ export func save_new(ledger_dir, record) {
     if file_exists(path) {
         return {"error": "run already exists: " + record["id"]}
     }
-    write_atomic_text(path, to_json_pretty(record))
+    # The no-overwrite runtime operation closes the check/write race: if
+    # another process creates this run after the check above, this write fails
+    # instead of replacing that receipt.
+    try {
+        write_file_atomic(path, to_json_pretty(record), false)
+    } except error {
+        if file_exists(path) {
+            return {"error": "run already exists: " + record["id"]}
+        }
+        return {"error": "cannot write run file: " + path + ": " + "${error}"}
+    }
     return {"ok": path}
 }
 
@@ -153,7 +164,10 @@ export func save_update(ledger_dir, record) {
     }
     ensure_ledger(ledger_dir)
     path := run_path(ledger_dir, record["id"])
-    write_atomic_text(path, to_json_pretty(record))
+    res := write_atomic_text(path, to_json_pretty(record))
+    if has_key(res, "error") == 1 {
+        return res
+    }
     return {"ok": path}
 }
 

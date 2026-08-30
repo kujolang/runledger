@@ -137,6 +137,9 @@ KUJO="$KUJO_BIN" "$RUNLEDGER" report --task "CLI Test" --output "$REPORT" --ledg
 REPORT_NESTED="$TMPROOT/nested/out/RUNLEDGER_REPORT.md"
 KUJO="$KUJO_BIN" "$RUNLEDGER" report --task "CLI Test" --output "$REPORT_NESTED" --ledger "$LEDGER"
 [[ -s "$REPORT_NESTED" ]] || fail "nested report file missing or empty"
+mkdir -p "$TMPROOT/report-target-is-directory"
+expect_exit 1 env KUJO="$KUJO_BIN" "$RUNLEDGER" report --output "$TMPROOT/report-target-is-directory" --ledger "$LEDGER"
+grep -q '^error: cannot write file:' /tmp/runledger-cli-last.out || fail "report write failure was not actionable"
 
 START2="$(KUJO="$KUJO_BIN" "$RUNLEDGER" start --provider local --model local-agent --task "No Git" --repo "$PLAIN" --ledger "$LEDGER")"
 RID2="$(printf '%s\n' "$START2" | sed -n '1s/^Started run: //p')"

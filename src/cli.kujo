@@ -665,7 +665,11 @@ func cmd_report(tokens) {
         return usage_error(usage("report"))
     }
     if type(output) != "null" && output != "" {
-        write_atomic_text(output, md)
+        write_res := write_atomic_text(output, md)
+        if has_key(write_res, "error") == 1 {
+            print_error(write_res["error"])
+            return 1
+        }
         print("Wrote report to " + output)
         return 0
     }
