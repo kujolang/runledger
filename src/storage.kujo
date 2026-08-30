@@ -188,8 +188,18 @@ export func load(ledger_dir, id) {
     if r.exitcode != 0 {
         return {"error": "cannot read run file: " + path}
     }
-    raw := read_file(path)
-    parsed := parse_json(raw)
+    mut raw := ""
+    try {
+        raw = read_file(path)
+    } except read_error {
+        return {"error": "cannot read run file: " + path}
+    }
+    mut parsed := null
+    try {
+        parsed = parse_json(raw)
+    } except parse_error {
+        return {"error": "corrupt run file: " + path}
+    }
     if type(parsed) == "Error" {
         return {"error": "corrupt run file: " + path}
     }

@@ -6,6 +6,7 @@ All notable changes to RunLedger are documented here.
 
 - Use the Kujo runtime's collision-resistant, durable atomic-write primitive for receipts and reports.
 - Return a concise operational error when a report output cannot be written instead of surfacing an unhandled runtime failure.
+- Convert run-file read and parse failures into the documented corrupt/unreadable record errors.
 - Reject command-specific unknown flags instead of silently ignoring typos.
 - Reject surplus positional arguments instead of silently discarding them.
 - Reject ambiguous flag syntax, including duplicate flags and values attached to boolean flags.
