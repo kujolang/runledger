@@ -1,0 +1,12 @@
+{
+  "concurrent_notes_preserved": true,
+  "concurrent_starts_preserved": true,
+  "large_list_succeeds": true,
+  "large_report_succeeds": true,
+  "lint_clean": true,
+  "native_tests_pass": true,
+  "startup_succeeds": true,
+  "terminal_record_preserved": true,
+  "typical_lifecycle_succeeds": true,
+  "unknown_flag_rejected": true
+}

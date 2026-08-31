@@ -1,0 +1,19 @@
+{
+  "name": "runledger-hardening-baseline",
+  "description": "Deterministic capability score for the v1.0.0 baseline using benchmark evidence.",
+  "version": "1.0.0",
+  "output_dir": "./evaluation/eval-output/baseline",
+  "stop_on_failure": false,
+  "tests": [
+    {"name": "startup succeeds", "check": "json_value_equals", "params": {"path": "./evaluation/results/eval-input/baseline.json", "json_path": "startup_succeeds", "expected": true}},
+    {"name": "typical lifecycle succeeds", "check": "json_value_equals", "params": {"path": "./evaluation/results/eval-input/baseline.json", "json_path": "typical_lifecycle_succeeds", "expected": true}},
+    {"name": "large list succeeds", "check": "json_value_equals", "params": {"path": "./evaluation/results/eval-input/baseline.json", "json_path": "large_list_succeeds", "expected": true}},
+    {"name": "large report succeeds", "check": "json_value_equals", "params": {"path": "./evaluation/results/eval-input/baseline.json", "json_path": "large_report_succeeds", "expected": true}},
+    {"name": "concurrent starts preserve every receipt", "check": "json_value_equals", "params": {"path": "./evaluation/results/eval-input/baseline.json", "json_path": "concurrent_starts_preserved", "expected": true}},
+    {"name": "concurrent notes preserve every update", "check": "json_value_equals", "params": {"path": "./evaluation/results/eval-input/baseline.json", "json_path": "concurrent_notes_preserved", "expected": true}},
+    {"name": "unknown flags are rejected", "check": "json_value_equals", "params": {"path": "./evaluation/results/eval-input/baseline.json", "json_path": "unknown_flag_rejected", "expected": true}},
+    {"name": "terminal records cannot be rewritten", "check": "json_value_equals", "params": {"path": "./evaluation/results/eval-input/baseline.json", "json_path": "terminal_record_preserved", "expected": true}},
+    {"name": "native tests pass repeatedly", "check": "json_value_equals", "params": {"path": "./evaluation/results/eval-input/baseline.json", "json_path": "native_tests_pass", "expected": true}},
+    {"name": "implementation lint is clean", "check": "json_value_equals", "params": {"path": "./evaluation/results/eval-input/baseline.json", "json_path": "lint_clean", "expected": true}}
+  ]
+}

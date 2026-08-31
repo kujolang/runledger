@@ -1,5 +1,7 @@
 # RunLedger ledgers are local working data, not source.
 .runledger/
+evaluation/eval-output/
+evaluation/__pycache__/
 
 # Generated reports (the committed sample lives under examples/).
 /RUNLEDGER_REPORT.md
