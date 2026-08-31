@@ -37,7 +37,7 @@ mkdir -p "$REPO" "$PLAIN"
 
 HELP_OUT="$(KUJO="$KUJO_BIN" "$RUNLEDGER" help)"
 EXPECTED_HELP="$(cat <<'EOF'
-runledger 1.0.0 — a local ledger for AI-agent build runs
+runledger 1.1.0 — a local ledger for AI-agent build runs
 
 Usage: runledger <command> [arguments]
 

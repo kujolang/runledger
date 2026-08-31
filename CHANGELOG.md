@@ -4,6 +4,8 @@ All notable changes to RunLedger are documented here.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-30
+
 - Serialize receipt mutations with per-record ownership locks so concurrent CLI updates cannot silently overwrite one another.
 - Retry run-ID allocation when concurrent `start` commands select the same candidate.
 - Bound lock waits and report an actionable stale-lock recovery path through `RUNLEDGER_LOCK_TIMEOUT_MS`.
