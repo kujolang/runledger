@@ -113,6 +113,9 @@ runledger start \
 runledger usage <run-id> --input 140000 --output 22000
 runledger cost  <run-id> --total 1.18 --currency USD
 
+# Link execution evidence without copying telemetry payloads
+runledger correlate <run-id> --watchdog-trace <trace-id> --dispatch-run <run-id>
+
 # Add a follow-up you noticed
 runledger followup <run-id> "Add tests for JSON output"
 
@@ -176,6 +179,7 @@ runledger report  --task "$TASK" --output RUNLEDGER_REPORT.md
 | `followup <run-id> "text"` | Add a follow-up item. |
 | `usage <run-id>` | Record token usage. |
 | `cost <run-id>` | Record cost (manual, with configurable currency). |
+| `correlate <run-id>` | Link Watchdog, Dispatch, Relay, and Eval identifiers without duplicating their records. |
 | `compare` | Compare runs (`--task` to filter, `--json` for raw). |
 | `report` | Generate a markdown report (`--output <file>` to save). |
 | `help` / `--help` | Show usage. |
@@ -187,6 +191,7 @@ runledger report  --task "$TASK" --output RUNLEDGER_REPORT.md
 - `finish`: `--status <s>` `--verdict <text>` (required); `--notes <text>` `--repo <path>` (defaults to the run's recorded repo)
 - `usage`: `--input` `--output` `--cache-read` `--cache-write` (all optional integers)
 - `cost`: `--total` `--currency` `--input` `--output` `--cache` (amounts are floats; only provided fields change)
+- `correlate`: `--watchdog-trace` `--watchdog-run` `--dispatch-run` `--relay-run` `--eval-run` (bounded identifiers only)
 - `compare` / `report`: `--task <name>`; `compare --json`; `report --output <file>`
 
 Allowed statuses: `in_progress`, `pass`, `partial`, `fail`, `abandoned`. An
@@ -202,7 +207,7 @@ invalid status fails with a clear error and a non-zero exit code.
 
 ## Concurrent writers
 
-The mutating commands (`finish`, `note`, `followup`, `usage`, and `cost`)
+The mutating commands (`finish`, `note`, `followup`, `usage`, `cost`, and `correlate`)
 serialize each receipt's complete read-modify-write transaction through
 `<ledger>/locks/<run-id>.lock`. Writers targeting different receipts remain
 independent. Concurrent `start` commands atomically retry ID allocation when
@@ -256,6 +261,7 @@ Each run is a single JSON object. Fields:
 | `commands` / `tests` | Reserved arrays for reported commands and test results. |
 | `usage` | `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_write_tokens`. |
 | `cost` | `currency`, `input_cost`, `output_cost`, `cache_cost`, `total_cost`. |
+| `correlation` | Optional `watchdog_trace_id`, `watchdog_run_id`, `dispatch_run_id`, `relay_run_id`, and `eval_run_id` links. |
 | `verdict` | Your one-line human verdict. |
 | `followups` | Timestamped follow-up items. |
 | `notes` | Timestamped notes. |

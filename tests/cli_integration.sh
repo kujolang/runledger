@@ -58,6 +58,8 @@ Commands:
              usage: runledger usage <run-id> [--input N] [--output N] [--cache-read N] [--cache-write N]
   cost       Record cost for a run
              usage: runledger cost <run-id> [--total N] [--currency CODE] [--input N] [--output N] [--cache N]
+  correlate  Link this receipt to Watchdog, Dispatch, Relay, or Eval identifiers
+             usage: runledger correlate <run-id> [--watchdog-trace ID] [--watchdog-run ID] [--dispatch-run ID] [--relay-run ID] [--eval-run ID]
   compare    Compare runs in the ledger
              usage: runledger compare [--task <name>] [--json]
   report     Generate a markdown report (--output <file> to save)
@@ -109,6 +111,8 @@ expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" show "$RID" extra --ledger "$LED
 expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" list --json=false --ledger "$LEDGER"
 expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" usage "$RID" --ledger "$LEDGER"
 expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" cost "$RID" --ledger "$LEDGER"
+expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" correlate "$RID" --ledger "$LEDGER"
+expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" correlate "$RID" --watchdog-trace '../unsafe' --ledger "$LEDGER"
 expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" note "$RID" "   " --ledger "$LEDGER"
 expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" followup "$RID" "   " --ledger "$LEDGER"
 expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" nope
@@ -155,12 +159,14 @@ rm -f "$LOCK_PATH"
 KUJO="$KUJO_BIN" "$RUNLEDGER" followup "$RID" "cli followup" --ledger "$LEDGER"
 KUJO="$KUJO_BIN" "$RUNLEDGER" usage "$RID" --input 10 --output 2 --cache-read 1 --cache-write 0 --ledger "$LEDGER"
 KUJO="$KUJO_BIN" "$RUNLEDGER" cost "$RID" --total 0.5 --currency USD --ledger "$LEDGER"
+KUJO="$KUJO_BIN" "$RUNLEDGER" correlate "$RID" --watchdog-trace 0123456789abcdef0123456789abcdef --dispatch-run dispatch:run-1 --relay-run relay:run-1 --eval-run eval:run-1 --ledger "$LEDGER"
 printf "delta\n" >> "$REPO/base.txt"
 KUJO="$KUJO_BIN" "$RUNLEDGER" finish "$RID" --status partial --verdict "ok" --ledger "$LEDGER"
 expect_exit 1 env KUJO="$KUJO_BIN" "$RUNLEDGER" finish "$RID" --status fail --verdict "rewritten" --ledger "$LEDGER"
 
 SHOW_JSON="$(KUJO="$KUJO_BIN" "$RUNLEDGER" show "$RID" --json --ledger "$LEDGER")"
 [[ "$SHOW_JSON" == *'"verdict": "ok"'* ]] || fail "show --json missing verdict"
+[[ "$SHOW_JSON" == *'"watchdog_trace_id": "0123456789abcdef0123456789abcdef"'* ]] || fail "show --json missing Watchdog correlation"
 LIST_JSON="$(KUJO="$KUJO_BIN" "$RUNLEDGER" list --json --ledger "$LEDGER")"
 [[ "$LIST_JSON" == *"\"$RID\""* ]] || fail "list --json missing run id"
 COMPARE_JSON="$(KUJO="$KUJO_BIN" "$RUNLEDGER" compare --json --task "CLI Test" --ledger "$LEDGER")"

@@ -42,6 +42,18 @@ export func empty_cost() {
     }
 }
 
+# Cross-system identifiers link the receipt to telemetry/orchestration evidence
+# without copying either system's payloads into the other.
+export func empty_correlation() {
+    return {
+        "watchdog_trace_id": null,
+        "watchdog_run_id": null,
+        "dispatch_run_id": null,
+        "relay_run_id": null,
+        "eval_run_id": null
+    }
+}
+
 # Build a new run record. `id` and metadata are supplied by the caller (the
 # storage layer mints the id, the CLI supplies provider/model/task/etc.).
 # Git fields default to null and are filled in defensively by the git layer.
@@ -66,6 +78,7 @@ export func new_record(id, provider, model, task_name, prompt_file, repo_path) {
         "tests": [],
         "usage": empty_usage(),
         "cost": empty_cost(),
+        "correlation": empty_correlation(),
         "verdict": null,
         "followups": [],
         "notes": []

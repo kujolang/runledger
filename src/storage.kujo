@@ -6,7 +6,7 @@
 # where the ledger lives (default ./.runledger, overridable via CLI/env).
 
 from src.util import slug, pad_int, truthy
-from src.record import empty_usage, empty_cost
+from src.record import empty_usage, empty_cost, empty_correlation
 
 # Path to the directory holding individual run files.
 export func runs_dir(ledger_dir) {
@@ -414,6 +414,7 @@ func normalize_record(record) {
         {"key": "tests", "fallback": []},
         {"key": "usage", "fallback": empty_usage()},
         {"key": "cost", "fallback": empty_cost()},
+        {"key": "correlation", "fallback": empty_correlation()},
         {"key": "verdict", "fallback": null},
         {"key": "followups", "fallback": []},
         {"key": "notes", "fallback": []}
@@ -422,7 +423,28 @@ func normalize_record(record) {
     rec["changed_files"] := normalize_string_list(rec["changed_files"])
     rec["usage"] := normalize_usage(rec["usage"])
     rec["cost"] := normalize_cost(rec["cost"])
+    rec["correlation"] := normalize_correlation(rec["correlation"])
     return rec
+}
+
+func normalize_correlation(value) {
+    correlation_result := empty_correlation()
+    if type(value) != "dict" { return correlation_result }
+    for key in keys(correlation_result) {
+        candidate := null
+        if has_key(value, key) == 1 { candidate = value[key] }
+        if type(candidate) == "string" && len(trim(candidate)) > 0 && len(candidate) <= 160 {
+            safe := true
+            mut i := 0
+            while i < len(candidate) {
+                ch := substring(candidate, i, i + 1)
+                if index_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_:.", ch) < 0 { safe = false }
+                i = i + 1
+            }
+            if safe { correlation_result[key] := candidate }
+        }
+    }
+    return correlation_result
 }
 
 func put_defaults(target, defaults) {

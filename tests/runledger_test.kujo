@@ -15,7 +15,7 @@
 
 from src.util import slug, pad_int
 from cli import parse_args
-from src.record import new_record, is_valid_status, valid_statuses, empty_usage, empty_cost, changed_file_count, followup_count
+from src.record import new_record, is_valid_status, valid_statuses, empty_usage, empty_cost, empty_correlation, changed_file_count, followup_count
 from src.storage import generate_id, save_new, save_update, load, list_records, exists, ensure_ledger, run_path, is_safe_run_id, acquire_record_lock, release_record_lock
 from src.gitmeta import is_repo, head_commit, is_dirty, changed_files, start_metadata, end_metadata
 from src.render import render_report, status_counts, cost_total, cost_totals_by_currency, cost_label
@@ -99,6 +99,8 @@ func test_record() {
     check_eq(type(r["usage"]), "dict", "usage block present")
     check_eq(type(r["usage"]["input_tokens"]), "null", "usage tokens null at start")
     check_eq(r["cost"]["currency"], "USD", "cost currency defaults USD")
+    check_eq(type(r["correlation"]), "dict", "correlation block present")
+    check_eq(type(r["correlation"]["watchdog_trace_id"]), "null", "Watchdog trace starts unknown")
     # invalid status behavior
     check(is_valid_status("pass") == true, "pass is valid status")
     check(is_valid_status("bogus") == false, "bogus is invalid status")
@@ -207,6 +209,12 @@ func test_lifecycle() {
     save_update(LEDGER, rec)
     check_eq(load(LEDGER, id)["cost"]["total_cost"], 1.25, "cost total recorded")
     check_eq(cost_label(load(LEDGER, id)), "1.25 USD", "cost label formats")
+    rec["correlation"] := {"watchdog_trace_id": "0123456789abcdef0123456789abcdef", "dispatch_run_id": "dispatch:run-1", "repository_path": "/secret"}
+    save_update(LEDGER, rec)
+    correlated := load(LEDGER, id)["correlation"]
+    check_eq(correlated["watchdog_trace_id"], "0123456789abcdef0123456789abcdef", "Watchdog trace correlation persists")
+    check_eq(correlated["dispatch_run_id"], "dispatch:run-1", "Dispatch run correlation persists")
+    check(has_key(correlated, "repository_path") == 0, "unknown correlation fields are discarded")
 }
 
 # --- report -------------------------------------------------------------

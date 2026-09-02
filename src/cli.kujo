@@ -9,7 +9,7 @@
 #   1  operational failure (no such run, invalid status, corrupt file)
 #   2  usage error (bad/missing arguments)
 
-from src.record import new_record, is_valid_status, valid_statuses, empty_usage, empty_cost
+from src.record import new_record, is_valid_status, valid_statuses, empty_usage, empty_cost, empty_correlation
 from src.storage import generate_id, save_new, load, list_records, run_path, write_atomic_text, update_record
 from src.gitmeta import start_metadata, end_metadata
 from src.render import render_list, render_show, render_compare, render_report
@@ -33,6 +33,7 @@ func usage(command) {
         "followup-short": "usage: runledger followup <run-id> \"follow-up text\"",
         "usage": "usage: runledger usage <run-id> [--input N] [--output N] [--cache-read N] [--cache-write N] [--ledger <dir>]",
         "cost": "usage: runledger cost <run-id> [--total N] [--currency CODE] [--input N] [--output N] [--cache N] [--ledger <dir>]",
+        "correlate": "usage: runledger correlate <run-id> [--watchdog-trace ID] [--watchdog-run ID] [--dispatch-run ID] [--relay-run ID] [--eval-run ID] [--ledger <dir>]",
         "compare": "usage: runledger compare [--task <name>] [--json] [--ledger <dir>]",
         "report": "usage: runledger report [--task <name>] [--output <file>] [--ledger <dir>]"
     }
@@ -537,6 +538,49 @@ func cmd_cost(tokens) {
     return 0
 }
 
+func correlation_value_safe(value) {
+    if type(value) != "string" || trim(value) == "" || len(value) > 160 { return false }
+    mut i := 0
+    while i < len(value) {
+        ch := substring(value, i, i + 1)
+        if index_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_:.", ch) < 0 { return false }
+        i = i + 1
+    }
+    return true
+}
+
+func cmd_correlate(tokens) {
+    parsed := parse_args(tokens, [])
+    names := ["watchdog-trace", "watchdog-run", "dispatch-run", "relay-run", "eval-run"]
+    allowed := ["watchdog-trace", "watchdog-run", "dispatch-run", "relay-run", "eval-run", "ledger"]
+    if validate_parsed(parsed, allowed, 1, "correlate") == false { return 2 }
+    ledger := resolve_ledger(parsed)
+    id := first_positional(parsed)
+    if type(ledger) == "null" || type(id) == "null" || id == "" || has_any_flag(parsed, names) == false { return usage_error(usage("correlate")) }
+    for name in names {
+        value := flag(parsed, name)
+        if type(value) != "null" && correlation_value_safe(value) == false {
+            print_error("--" + name + " must be a 1-160 character correlation identifier")
+            return 2
+        }
+    }
+    result := update_record(ledger, id, func(rec) {
+        correlation := rec["correlation"]
+        if type(correlation) != "dict" { correlation = empty_correlation() }
+        mappings := [["watchdog-trace", "watchdog_trace_id"], ["watchdog-run", "watchdog_run_id"], ["dispatch-run", "dispatch_run_id"], ["relay-run", "relay_run_id"], ["eval-run", "eval_run_id"]]
+        for mapping in mappings {
+            value := flag(parsed, mapping[0])
+            if type(value) != "null" { correlation[mapping[1]] := value }
+        }
+        rec["correlation"] := correlation
+        touch(rec)
+        return {"record": rec}
+    })
+    if has_key(result, "error") == 1 { print_error(result["error"]); return 1 }
+    print("Updated correlation for " + id)
+    return 0
+}
+
 func set_float_flags(target, parsed, specs) {
     mut acc := target
     mut i := 0
@@ -718,6 +762,8 @@ func print_help() {
         "             usage: runledger usage <run-id> [--input N] [--output N] [--cache-read N] [--cache-write N]",
         "  cost       Record cost for a run",
         "             usage: runledger cost <run-id> [--total N] [--currency CODE] [--input N] [--output N] [--cache N]",
+        "  correlate  Link this receipt to Watchdog, Dispatch, Relay, or Eval identifiers",
+        "             usage: runledger correlate <run-id> [--watchdog-trace ID] [--watchdog-run ID] [--dispatch-run ID] [--relay-run ID] [--eval-run ID]",
         "  compare    Compare runs in the ledger",
         "             usage: runledger compare [--task <name>] [--json]",
         "  report     Generate a markdown report (--output <file> to save)",
@@ -772,6 +818,9 @@ export func main(argv) {
     }
     if cmd == "cost" {
         return cmd_cost(rest)
+    }
+    if cmd == "correlate" {
+        return cmd_correlate(rest)
     }
     if cmd == "compare" {
         return cmd_compare(rest)

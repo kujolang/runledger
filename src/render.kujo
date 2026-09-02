@@ -156,6 +156,7 @@ export func render_show(record) {
         "    cache read:  " + display(usage["cache_read_tokens"]),
         "    cache write: " + display(usage["cache_write_tokens"]),
         "  Cost: " + cost_label(record),
+        "  Correlation: " + to_json(record["correlation"]),
         "",
         "  Follow-ups (" + to_string(followup_count(record)) + "):"
     ])
