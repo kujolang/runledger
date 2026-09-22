@@ -239,6 +239,18 @@ mkdir -p "$TMPROOT/report-target-is-directory"
 expect_exit 1 env KUJO="$KUJO_BIN" "$RUNLEDGER" report --output "$TMPROOT/report-target-is-directory" --ledger "$LEDGER"
 grep -q '^error: cannot write file:' /tmp/runledger-cli-last.out || fail "report write failure was not actionable"
 
+# A tiny POSIX file-size quota simulates exhausted writable capacity without
+# mounting a disk or altering the host. Ignore SIGXFSZ so write returns an
+# error that the CLI must turn into exit 1; atomic output must not be published.
+KUJO="$KUJO_BIN" "$RUNLEDGER" note "$RID" "$(printf '%04000d' 0)" --ledger "$LEDGER" >/dev/null
+set +e
+bash -c 'trap "" XFSZ; ulimit -f 1; KUJO="$1" "$2" report --output "$3/quota-report.md" --ledger "$4"' _ "$KUJO_BIN" "$RUNLEDGER" "$TMPROOT" "$LEDGER" >/tmp/runledger-cli-last.out 2>&1
+quota_exit=$?
+set -e
+[[ "$quota_exit" -eq 1 ]] || fail "file-size quota did not return operational exit 1 (got $quota_exit)"
+grep -q '^error: cannot write file:' /tmp/runledger-cli-last.out || fail "file-size quota error was not actionable"
+[[ ! -e "$TMPROOT/quota-report.md" ]] || fail "partial quota-constrained report was published"
+
 # POSIX read/write permission failures are operational errors; a privileged
 # runner may bypass chmod restrictions, in which case this fixture is skipped.
 PROTECTED_DIR="$TMPROOT/protected"
