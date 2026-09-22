@@ -77,25 +77,25 @@ export func changed_files(repo_path) {
 func changed_files_in_repo(repo_path) {
     mut out := []
     # Tracked modifications/staged changes against HEAD.
-    tracked := git(repo_path, "diff --name-only HEAD")
+    tracked := git(repo_path, "diff --name-only -z HEAD --")
     if tracked.exitcode == 0 {
-        out = collect_lines(out, tracked.stdout)
+        out = collect_paths(out, tracked.stdout)
     } else {
         # Repos with no commits have no HEAD; collect staged + unstaged tracked
         # paths using index/worktree comparisons.
-        staged := git(repo_path, "diff --name-only --cached")
+        staged := git(repo_path, "diff --name-only -z --cached --")
         if staged.exitcode == 0 {
-            out = collect_lines(out, staged.stdout)
+            out = collect_paths(out, staged.stdout)
         }
-        unstaged := git(repo_path, "diff --name-only")
+        unstaged := git(repo_path, "diff --name-only -z --")
         if unstaged.exitcode == 0 {
-            out = collect_lines(out, unstaged.stdout)
+            out = collect_paths(out, unstaged.stdout)
         }
     }
     # Untracked files not yet known to git.
-    untracked := git(repo_path, "ls-files --others --exclude-standard")
+    untracked := git(repo_path, "ls-files -z --others --exclude-standard")
     if untracked.exitcode == 0 {
-        out = collect_lines(out, untracked.stdout)
+        out = collect_paths(out, untracked.stdout)
     }
     return out
 }
@@ -108,9 +108,9 @@ func changed_files_since(repo_path, start_commit, end_commit) {
     mut out := []
     if type(start_commit) == "string" && type(end_commit) == "string" &&
        is_commit_id(start_commit) && is_commit_id(end_commit) && start_commit != end_commit {
-        committed := git(repo_path, "diff --name-only " + shq(start_commit) + " " + shq(end_commit) + " --")
+        committed := git(repo_path, "diff --name-only -z " + shq(start_commit) + " " + shq(end_commit) + " --")
         if committed.exitcode == 0 {
-            out = collect_lines(out, committed.stdout)
+            out = collect_paths(out, committed.stdout)
         }
     }
     for name in changed_files_in_repo(repo_path) {
@@ -129,12 +129,13 @@ func is_commit_id(value) {
     return true
 }
 
-# Append the non-empty, de-duplicated trimmed lines of `text` to `acc`.
-func collect_lines(acc, text) {
+# Git -z output is NUL-delimited and does not quote or escape pathnames.
+# Decode a NUL via JSON because Kujo string literals only support a small
+# escape set. Never trim: spaces and newlines may be part of a real filename.
+func collect_paths(acc, text) {
     mut out := acc
-    lines := split(text, "\n")
-    for line in lines {
-        name := trim(line)
+    names := split(text, parse_json("\"\\u0000\""))
+    for name in names {
         if name != "" {
             if includes(out, name) == false {
                 out = push(out, name)

@@ -238,9 +238,18 @@ func test_report() {
     weird := new_record("weird", "p|x", "m", "Task | Pipe", null, ".")
     weird["status"] := "pass"
     weird["verdict"] := "line\npipe|ok"
-    weird_md := render_report([weird])
+    mut weird_md := render_report([weird])
     check(contains(weird_md, "Task \\| Pipe") == 1, "report escapes table pipes")
     check(contains(weird_md, "line pipe\\|ok") == 1, "report flattens multiline table cells")
+
+    weird["task_name"] := "</h3>\n![remote](https://example.invalid/track)"
+    weird["notes"] := [{"at": now_utc(), "text": "first\n## forged heading <img src=x> ![remote](https://example.invalid/track)"}]
+    weird["followups"] := [{"at": now_utc(), "text": "[open](https://example.invalid) `code` *emphasis*"}]
+    weird_md = render_report([weird])
+    check(contains(weird_md, "&lt;/h3&gt;") == 1, "report escapes task HTML")
+    check(contains(weird_md, "![remote](") == 0, "report escapes remote image markdown")
+    check(contains(weird_md, "\n## forged heading") == 0, "report flattens injected headings in notes")
+    check(contains(weird_md, "\\[open\\](") == 1, "report escapes prose links")
 
     eur := new_record("eur", "p", "m", "Task", null, ".")
     eur_cost := eur["cost"]
@@ -267,6 +276,36 @@ func test_non_git() {
     check_eq(type(sm["start_commit"]), "null", "start metadata null outside repo")
 }
 
+func has_path(paths, expected) {
+    for name in paths {
+        if name == expected { return true }
+    }
+    return false
+}
+
+func test_git_filenames() {
+    start := head_commit(REPO)
+    odd := "line\nbreak\tquote\"-é.txt"
+    spaced := " leading space.txt "
+    write_file(join_path(REPO, odd), "one\n")
+    write_file(join_path(REPO, spaced), "two\n")
+    untracked := changed_files(REPO)
+    check(has_path(untracked, odd), "untracked special filename round trips")
+    check(has_path(untracked, spaced), "untracked leading/trailing spaces preserved")
+    sh("git -C " + REPO + " add -A")
+    staged := changed_files(REPO)
+    check(has_path(staged, odd), "staged special filename round trips")
+    sh("git -C " + REPO + " commit -qm 'special filenames'")
+    committed := end_metadata(REPO, start)["changed_files"]
+    check(has_path(committed, odd), "committed special filename round trips")
+    check(has_path(committed, spaced), "committed spaces preserved")
+    sh("git -C " + REPO + " mv app.txt renamed.txt")
+    sh("git -C " + REPO + " rm extra.txt")
+    moved := changed_files(REPO)
+    check(has_path(moved, "renamed.txt"), "renamed destination is recorded")
+    check(has_path(moved, "extra.txt"), "deleted path is recorded")
+}
+
 # --- run all ------------------------------------------------------------
 setup()
 test_util()
@@ -276,6 +315,7 @@ test_storage()
 test_lifecycle()
 test_report()
 test_non_git()
+test_git_filenames()
 teardown()
 
 print("")
