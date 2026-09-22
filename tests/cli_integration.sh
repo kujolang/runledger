@@ -154,6 +154,22 @@ NESTED_START="$(KUJO="$KUJO_BIN" "$RUNLEDGER" start --provider local --model loc
 NESTED_RID="$(printf '%s\n' "$NESTED_START" | sed -n '1s/^Started run: //p')"
 [[ -s "$NESTED_LEDGER/runs/$NESTED_RID.json" ]] || fail "nested ledger run file missing"
 
+PAGE_LEDGER="$TMPROOT/page-ledger"
+PAGE_FIRST="$(KUJO="$KUJO_BIN" "$RUNLEDGER" start --provider local --model a --task "Page" --repo "$PLAIN" --ledger "$PAGE_LEDGER" | sed -n '1s/^Started run: //p')"
+PAGE_SECOND="$(KUJO="$KUJO_BIN" "$RUNLEDGER" start --provider local --model b --task "Page" --repo "$PLAIN" --ledger "$PAGE_LEDGER" | sed -n '1s/^Started run: //p')"
+PAGE_JSON="$(KUJO="$KUJO_BIN" "$RUNLEDGER" list --json --limit 1 --offset 1 --ledger "$PAGE_LEDGER")"
+[[ "$PAGE_JSON" == *"\"$PAGE_SECOND\""* && "$PAGE_JSON" != *"\"$PAGE_FIRST\""* ]] || fail "file-ordered pagination returned wrong run"
+PAGE_REPORT="$TMPROOT/page-report.md"
+KUJO="$KUJO_BIN" "$RUNLEDGER" report --limit 1 --offset 1 --output "$PAGE_REPORT" --ledger "$PAGE_LEDGER"
+grep -q 'Summary counts refer to this page only' "$PAGE_REPORT" || fail "paged report did not identify partial totals"
+grep -q "$PAGE_SECOND" "$PAGE_REPORT" || fail "paged report omitted selected run"
+expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" list --limit 0 --ledger "$PAGE_LEDGER"
+expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" list --offset -1 --ledger "$PAGE_LEDGER"
+printf '%s\n' '{broken' > "$PAGE_LEDGER/runs/zz-corrupt.json"
+expect_exit 1 env KUJO="$KUJO_BIN" "$RUNLEDGER" list --strict --limit 1 --ledger "$PAGE_LEDGER"
+PAGE_JSON="$(KUJO="$KUJO_BIN" "$RUNLEDGER" list --json --limit 1 --ledger "$PAGE_LEDGER")"
+[[ "$PAGE_JSON" == *"\"$PAGE_FIRST\""* ]] || fail "non-strict page failed on corruption outside its window"
+
 KUJO="$KUJO_BIN" "$RUNLEDGER" note "$RID" "cli note" --ledger "$LEDGER"
 KUJO="$KUJO_BIN" "$RUNLEDGER" note "$RID" '![remote](https://example.invalid/track)' --ledger "$LEDGER"
 KUJO="$KUJO_BIN" "$RUNLEDGER" note "$RID" --ledger "$LEDGER" -- "--dash-prefixed note"
@@ -207,6 +223,11 @@ COMPARE_JSON="$(KUJO="$KUJO_BIN" "$RUNLEDGER" compare --json --task "CLI Test" -
 REPORT="$TMPROOT/RUNLEDGER_REPORT.md"
 KUJO="$KUJO_BIN" "$RUNLEDGER" report --task "CLI Test" --output "$REPORT" --ledger "$LEDGER"
 [[ -s "$REPORT" ]] || fail "report file missing or empty"
+if stat -f '%Lp' "$REPORT" >/dev/null 2>&1; then
+  [[ "$(stat -f '%Lp' "$REPORT")" == 600 ]] || fail "generated report is not private"
+else
+  [[ "$(stat -c '%a' "$REPORT")" == 600 ]] || fail "generated report is not private"
+fi
 grep -q '^## Recorded tests' "$REPORT" || fail "report omitted test evidence"
 if grep -Fq '![remote](https://example.invalid/track)' "$REPORT"; then
   fail "report left embedded Markdown image active"

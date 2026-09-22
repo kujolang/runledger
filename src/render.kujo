@@ -464,52 +464,52 @@ func append_run_rows(out, records) {
 
 # Append a "### task" section listing the runs under each distinct task.
 func append_runs_by_task(out, records) {
-    mut acc := out
     tasks := unique_tasks(records)
+    mut sections := range(0, len(tasks))
     mut ti := 0
     while ti < len(tasks) {
         task := tasks[ti]
-        acc = append_md_heading(acc, "###", md_escape(task))
+        mut matches := range(0, len(records))
+        mut count := 0
         mut ri := 0
         while ri < len(records) {
             r := records[ri]
             if "${r["task_name"]}" == task {
-                acc = push(acc, "- " + md_escape(display(r["id"])) + " — " + md_escape(display(r["status"])) + " (" + md_escape(display(r["model"])) + ")")
+                matches[count] := "- " + md_escape(display(r["id"])) + " — " + md_escape(display(r["status"])) + " (" + md_escape(display(r["model"])) + ")"
+                count = count + 1
             }
             ri = ri + 1
         }
-        acc = push(acc, "")
+        sections[ti] := "### " + md_escape(task) + "\n\n" + join(slice(matches, 0, count), "\n") + "\n"
         ti = ti + 1
     }
-    return acc
+    if len(sections) == 0 { return out }
+    return push(out, join(sections, "\n"))
 }
 
 # Append "### run-id" sections for a list-valued field (followups / notes),
 # skipping runs that have none. Prints "None." when no run has any.
 func append_grouped(out, records, field) {
-    mut acc := out
-    mut any := false
+    mut sections := range(0, len(records))
+    mut count := 0
     mut i := 0
     while i < len(records) {
         r := records[i]
         items := r[field]
         if len(items) > 0 {
-            any = true
-            acc = append_md_heading(acc, "###", md_escape(display(r["id"])))
+            mut lines := range(0, len(items))
             mut j := 0
             while j < len(items) {
-                acc = push(acc, "- " + md_escape(entry_text(items[j])))
+                lines[j] := "- " + md_escape(entry_text(items[j]))
                 j = j + 1
             }
-            acc = push(acc, "")
+            sections[count] := "### " + md_escape(display(r["id"])) + "\n\n" + join(lines, "\n") + "\n"
+            count = count + 1
         }
         i = i + 1
     }
-    if any == false {
-        acc = push(acc, "None.")
-        acc = push(acc, "")
-    }
-    return acc
+    if count == 0 { return push_lines(out, ["None.", ""]) }
+    return push(out, join(slice(sections, 0, count), "\n"))
 }
 
 # Bare text of an entry, dropping the timestamp prefix for compact markdown.
@@ -521,26 +521,26 @@ func entry_text(item) {
 }
 
 func append_tests(out, records) {
-    mut acc := out
-    mut any := false
+    mut sections := range(0, len(records))
+    mut count := 0
     mut i := 0
     while i < len(records) {
         r := records[i]
         tests := r["tests"]
         if len(tests) > 0 {
-            any = true
-            acc = append_md_heading(acc, "###", md_escape(display(r["id"])))
+            mut lines := range(0, len(tests))
             mut j := 0
             while j < len(tests) {
-                acc = push(acc, "- " + md_escape(test_text(tests[j])))
+                lines[j] := "- " + md_escape(test_text(tests[j]))
                 j = j + 1
             }
-            acc = push(acc, "")
+            sections[count] := "### " + md_escape(display(r["id"])) + "\n\n" + join(lines, "\n") + "\n"
+            count = count + 1
         }
         i = i + 1
     }
-    if any == false { acc = push_lines(acc, ["None.", ""]) }
-    return acc
+    if count == 0 { return push_lines(out, ["None.", ""]) }
+    return push(out, join(slice(sections, 0, count), "\n"))
 }
 
 # Distinct task names in first-seen order.

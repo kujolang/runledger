@@ -376,6 +376,13 @@ export func list_records(ledger_dir) {
 # default listing keeps its historical skip-invalid behavior; strict callers
 # can fail on these diagnostics rather than consuming an incomplete ledger.
 export func inspect_records(ledger_dir) {
+    return inspect_records_window(ledger_dir, 0, -1)
+}
+
+# `offset` and `limit` address sorted run-file names, not valid-record ranks.
+# This lets page readers avoid opening earlier files and keeps a malformed
+# file from shifting later pages. For whole-ledger validation use inspect_records.
+export func inspect_records_window(ledger_dir, offset, limit) {
     rd := runs_dir(ledger_dir)
     mut out := []
     mut errors := []
@@ -403,12 +410,16 @@ export func inspect_records(ledger_dir) {
         e = e + 1
     }
     names = sort(slice(names, 0, name_count))
-    out = range(0, len(names))
-    errors = range(0, len(names))
+    mut begin := offset
+    if begin > len(names) { begin = len(names) }
+    mut end := len(names)
+    if limit >= 0 && begin + limit < end { end = begin + limit }
+    out = range(0, end - begin)
+    errors = range(0, end - begin)
     mut valid_count := 0
     mut error_count := 0
-    mut k := 0
-    while k < len(names) {
+    mut k := begin
+    while k < end {
         name := names[k]
         id := substring(name, 0, len(name) - 5)
         rec := load(ledger_dir, id)

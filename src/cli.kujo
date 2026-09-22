@@ -10,7 +10,7 @@
 #   2  usage error (bad/missing arguments)
 
 from src.record import new_record, is_valid_status, valid_statuses, empty_usage, empty_cost, empty_correlation
-from src.storage import generate_id, save_new, load, inspect_records, run_path, write_atomic_text, update_record
+from src.storage import generate_id, save_new, load, inspect_records, inspect_records_window, run_path, write_atomic_text, update_record
 from src.gitmeta import start_metadata, end_metadata
 from src.render import render_list, render_show, render_compare, render_report
 from src.args import parse_args
@@ -25,7 +25,7 @@ func usage(command) {
     usages := {
         "start": "usage: runledger start --model <m> --provider <p> --task <t> [--prompt <file>] [--repo <path>] [--ledger <dir>]",
         "finish": "usage: runledger finish <run-id> --status <pass|partial|fail|abandoned> --verdict \"text\" [--notes <text>] [--repo <path>] [--ledger <dir>]",
-        "list": "usage: runledger list [--json] [--strict] [--ledger <dir>]",
+        "list": "usage: runledger list [--json] [--strict] [--limit N] [--offset N] [--ledger <dir>]",
         "verify": "usage: runledger verify [--json] [--ledger <dir>]",
         "show": "usage: runledger show <run-id> [--json] [--ledger <dir>]",
         "note": "usage: runledger note <run-id> \"note text\" [--ledger <dir>]",
@@ -37,8 +37,8 @@ func usage(command) {
         "usage": "usage: runledger usage <run-id> [--input N] [--output N] [--cache-read N] [--cache-write N] [--ledger <dir>]",
         "cost": "usage: runledger cost <run-id> [--total N] [--currency CODE] [--input N] [--output N] [--cache N] [--ledger <dir>]",
         "correlate": "usage: runledger correlate <run-id> [--watchdog-trace ID] [--watchdog-run ID] [--dispatch-run ID] [--relay-run ID] [--eval-run ID] [--ledger <dir>]",
-        "compare": "usage: runledger compare [--task <name>] [--json] [--strict] [--ledger <dir>]",
-        "report": "usage: runledger report [--task <name>] [--output <file>] [--strict] [--ledger <dir>]"
+        "compare": "usage: runledger compare [--task <name>] [--json] [--strict] [--limit N] [--offset N] [--ledger <dir>]",
+        "report": "usage: runledger report [--task <name>] [--output <file>] [--strict] [--limit N] [--offset N] [--ledger <dir>]"
     }
     if has_key(usages, command) == 1 {
         return usages[command]
@@ -306,22 +306,63 @@ func start_or_dash(v) {
 
 func cmd_list(tokens) {
     parsed := parse_args(tokens, ["json", "strict"])
-    if validate_parsed(parsed, ["json", "strict", "ledger"], 0, "list") == false {
+    if validate_parsed(parsed, ["json", "strict", "limit", "offset", "ledger"], 0, "list") == false {
         return 2
     }
     ledger := resolve_ledger(parsed)
     if type(ledger) == "null" {
         return usage_error(usage("list"))
     }
-    inspection := inspect_records(ledger)
+    window := parse_window(parsed)
+    if has_key(window, "error") == 1 { return usage_error(window["error"]) }
+    inspection := inspect_for_command(ledger, parsed, window)
     if has_flag(parsed, "strict") && report_record_errors(inspection) { return 1 }
-    recs := inspection["records"]
+    recs := window_records(inspection, parsed, window)
     if has_flag(parsed, "json") {
         print(to_json_pretty(recs))
         return 0
     }
     print(render_list(recs))
     return 0
+}
+
+func parse_window(parsed) {
+    offset := flag(parsed, "offset")
+    limit := flag(parsed, "limit")
+    mut start := 0
+    mut count := -1
+    if type(offset) != "null" {
+        if is_non_negative_int(offset) == false || len(offset) > 9 {
+            return {"error": "--offset must be a non-negative integer up to 999999999"}
+        }
+        start = parse_int(offset)
+    }
+    if type(limit) != "null" {
+        if is_non_negative_int(limit) == false || len(limit) > 4 {
+            return {"error": "--limit must be an integer from 1 through 1000"}
+        }
+        count = parse_int(limit)
+        if count < 1 || count > 1000 {
+            return {"error": "--limit must be an integer from 1 through 1000"}
+        }
+    }
+    paged := type(offset) != "null" || type(limit) != "null"
+    return {"offset": start, "limit": count, "paged": paged}
+}
+
+func inspect_for_command(ledger, parsed, window) {
+    if has_flag(parsed, "strict") { return inspect_records(ledger) }
+    return inspect_records_window(ledger, window["offset"], window["limit"])
+}
+
+func window_records(inspection, parsed, window) {
+    records := inspection["records"]
+    if has_flag(parsed, "strict") == false || window["paged"] == false { return records }
+    start := window["offset"]
+    if start > len(records) { start = len(records) }
+    mut end := len(records)
+    if window["limit"] >= 0 && start + window["limit"] < end { end = start + window["limit"] }
+    return slice(records, start, end)
 }
 
 func report_record_errors(inspection) {
@@ -730,16 +771,18 @@ func is_digit(ch) {
 
 func cmd_compare(tokens) {
     parsed := parse_args(tokens, ["json", "strict"])
-    if validate_parsed(parsed, ["task", "json", "strict", "ledger"], 0, "compare") == false {
+    if validate_parsed(parsed, ["task", "json", "strict", "limit", "offset", "ledger"], 0, "compare") == false {
         return 2
     }
     ledger := resolve_ledger(parsed)
     if type(ledger) == "null" {
         return usage_error(usage("compare"))
     }
-    inspection := inspect_records(ledger)
+    window := parse_window(parsed)
+    if has_key(window, "error") == 1 { return usage_error(window["error"]) }
+    inspection := inspect_for_command(ledger, parsed, window)
     if has_flag(parsed, "strict") && report_record_errors(inspection) { return 1 }
-    recs := inspection["records"]
+    recs := window_records(inspection, parsed, window)
     task := flag(parsed, "task")
     if type(task) != "null" && trim(task) == "" {
         return usage_error(usage("compare"))
@@ -767,16 +810,18 @@ func filter_by_task(records, task) {
 
 func cmd_report(tokens) {
     parsed := parse_args(tokens, ["strict"])
-    if validate_parsed(parsed, ["task", "output", "strict", "ledger"], 0, "report") == false {
+    if validate_parsed(parsed, ["task", "output", "strict", "limit", "offset", "ledger"], 0, "report") == false {
         return 2
     }
     ledger := resolve_ledger(parsed)
     if type(ledger) == "null" {
         return usage_error(usage("report"))
     }
-    inspection := inspect_records(ledger)
+    window := parse_window(parsed)
+    if has_key(window, "error") == 1 { return usage_error(window["error"]) }
+    inspection := inspect_for_command(ledger, parsed, window)
     if has_flag(parsed, "strict") && report_record_errors(inspection) { return 1 }
-    recs := inspection["records"]
+    recs := window_records(inspection, parsed, window)
     task := flag(parsed, "task")
     if type(task) != "null" && trim(task) == "" {
         return usage_error(usage("report"))
@@ -785,6 +830,11 @@ func cmd_report(tokens) {
         recs = filter_by_task(recs, task)
     }
     md := render_report(recs)
+    if window["paged"] {
+        bound := "all remaining"
+        if window["limit"] >= 0 { bound = to_string(window["limit"]) }
+        md = replace_str(md, "# RunLedger Report\n", "# RunLedger Report\n\nPage: file offset " + to_string(window["offset"]) + ", limit " + bound + ". Summary counts refer to this page only.\n")
+    }
     output := flag(parsed, "output")
     if type(output) != "null" && trim(output) == "" {
         return usage_error(usage("report"))
