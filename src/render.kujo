@@ -49,20 +49,21 @@ export func text_table(headers, rows) {
         }
         ri = ri + 1
     }
-    mut out := render_row(headers, widths)
+    mut lines := range(0, len(rows) + 2)
+    lines[0] := render_row(headers, widths)
     mut seps := []
     mut k := 0
     while k < ncol {
         seps = push(seps, repeat("-", widths[k]))
         k = k + 1
     }
-    out = out + "\n" + render_row(seps, widths)
+    lines[1] := render_row(seps, widths)
     mut rj := 0
     while rj < len(rows) {
-        out = out + "\n" + render_row(rows[rj], widths)
+        lines[rj + 2] := render_row(rows[rj], widths)
         rj = rj + 1
     }
-    return out
+    return join(lines, "\n")
 }
 
 # Render one padded row with "  " column separators.
@@ -92,11 +93,11 @@ export func render_list(records) {
         return "No runs recorded yet. Start one with: runledger start ..."
     }
     headers := ["ID", "CREATED", "PROVIDER", "MODEL", "TASK", "STATUS", "VERDICT", "COST"]
-    mut rows := []
+    mut rows := range(0, len(records))
     mut i := 0
     while i < len(records) {
         r := records[i]
-        rows = push(rows, [
+        rows[i] := [
             r["id"],
             created_date(r),
             display(r["provider"]),
@@ -105,7 +106,7 @@ export func render_list(records) {
             display(r["status"]),
             display_or(r["verdict"], "-"),
             cost_label(r)
-        ])
+        ]
         i = i + 1
     }
     return text_table(headers, rows)
@@ -173,15 +174,47 @@ export func render_show(record) {
         lines = push(lines, "    - " + render_entry(notes[ni]))
         ni = ni + 1
     }
+    commands := record["commands"]
+    if len(commands) > 0 {
+        lines = push_lines(lines, ["", "  Recorded commands (" + to_string(len(commands)) + "):"])
+        mut ci := 0
+        while ci < len(commands) {
+            lines = push(lines, "    - " + render_entry(commands[ci]))
+            ci = ci + 1
+        }
+    }
+    tests := record["tests"]
+    if len(tests) > 0 {
+        lines = push_lines(lines, ["", "  Recorded tests (" + to_string(len(tests)) + "):"])
+        mut ti := 0
+        while ti < len(tests) {
+            lines = push(lines, "    - " + test_text(tests[ti]))
+            ti = ti + 1
+        }
+    }
     return join(lines, "\n")
+}
+
+func test_text(item) {
+    if type(item) != "dict" { return "${item}" }
+    name := field_or(item, "name", "(unnamed)")
+    status := field_or(item, "status", "unknown")
+    details := field_or(item, "details", "")
+    if details == "" { return "[" + status + "] " + name }
+    return "[" + status + "] " + name + " — " + details
+}
+
+func field_or(item, key, fallback) {
+    if has_key(item, key) == 1 && type(item[key]) == "string" { return item[key] }
+    return fallback
 }
 
 # Render a note/followup entry. Entries are {"at": iso, "text": str} dicts but we
 # tolerate plain strings too.
 func render_entry(item) {
     if type(item) == "dict" {
-        at := display_or(item["at"], "")
-        text := display_or(item["text"], "")
+        at := field_or(item, "at", "")
+        text := field_or(item, "text", "")
         if at == "" {
             return text
         }
@@ -196,11 +229,11 @@ export func render_compare(records) {
         return "No runs to compare."
     }
     headers := ["ID", "MODEL", "TASK", "STATUS", "VERDICT", "FILES", "FOLLOWUPS", "COST"]
-    mut rows := []
+    mut rows := range(0, len(records))
     mut i := 0
     while i < len(records) {
         r := records[i]
-        rows = push(rows, [
+        rows[i] := [
             r["id"],
             display(r["model"]),
             display(r["task_name"]),
@@ -209,7 +242,7 @@ export func render_compare(records) {
             to_string(changed_file_count(r)),
             to_string(followup_count(r)),
             cost_label(r)
-        ])
+        ]
         i = i + 1
     }
     return text_table(headers, rows)
@@ -303,6 +336,16 @@ func md_escape(value) {
     s := "${value}"
     s = replace_str(s, "\r", " ")
     s = replace_str(s, "\n", " ")
+    s = replace_str(s, "&", "&amp;")
+    s = replace_str(s, "<", "&lt;")
+    s = replace_str(s, ">", "&gt;")
+    s = replace_str(s, "\\", "\\\\")
+    s = replace_str(s, "`", "\\`")
+    s = replace_str(s, "*", "\\*")
+    s = replace_str(s, "_", "\\_")
+    s = replace_str(s, "[", "\\[")
+    s = replace_str(s, "]", "\\]")
+    s = replace_str(s, "!", "\\!")
     s = replace_str(s, "|", "\\|")
     return s
 }
@@ -345,13 +388,13 @@ export func render_report(records) {
         out = push(out, "No cost data recorded.")
     } else if len(cost_totals) == 1 {
         ct := cost_totals[0]
-        out = push(out, "Total recorded cost: " + to_string(ct["total"]) + " " + ct["currency"] + " (across " + to_string(ct["n"]) + " run(s)).")
+        out = push(out, "Total recorded cost: " + to_string(ct["total"]) + " " + md_escape(ct["currency"]) + " (across " + to_string(ct["n"]) + " run(s)).")
     } else {
         out = push(out, "Recorded cost totals by currency:")
         mut ci := 0
         while ci < len(cost_totals) {
             ct := cost_totals[ci]
-            out = push(out, "- " + ct["currency"] + ": " + to_string(ct["total"]) + " (across " + to_string(ct["n"]) + " run(s))")
+            out = push(out, "- " + md_escape(ct["currency"]) + ": " + to_string(ct["total"]) + " (across " + to_string(ct["n"]) + " run(s))")
             ci = ci + 1
         }
     }
@@ -374,16 +417,35 @@ export func render_report(records) {
     out = append_md_heading(out, "##", "Notes")
     out = append_grouped(out, records, "notes")
 
+    if has_entries(records, "commands") {
+        out = append_md_heading(out, "##", "Recorded commands")
+        out = append_grouped(out, records, "commands")
+    }
+
+    if has_entries(records, "tests") {
+        out = append_md_heading(out, "##", "Recorded tests")
+        out = append_tests(out, records)
+    }
+
     return join(out, "\n")
+}
+
+func has_entries(records, field) {
+    mut i := 0
+    while i < len(records) {
+        if len(records[i][field]) > 0 { return true }
+        i = i + 1
+    }
+    return false
 }
 
 # Append one markdown table row per run.
 func append_run_rows(out, records) {
-    mut acc := out
+    mut rows := range(0, len(records))
     mut i := 0
     while i < len(records) {
         r := records[i]
-        acc = push(acc, md_row([
+        rows[i] := md_row([
             display(r["id"]),
             display(r["task_name"]),
             display(r["provider"]),
@@ -393,10 +455,11 @@ func append_run_rows(out, records) {
             to_string(changed_file_count(r)),
             to_string(followup_count(r)),
             cost_label(r)
-        ]))
+        ])
         i = i + 1
     }
-    return acc
+    if len(rows) == 0 { return out }
+    return push(out, join(rows, "\n"))
 }
 
 # Append a "### task" section listing the runs under each distinct task.
@@ -406,12 +469,12 @@ func append_runs_by_task(out, records) {
     mut ti := 0
     while ti < len(tasks) {
         task := tasks[ti]
-        acc = append_md_heading(acc, "###", task)
+        acc = append_md_heading(acc, "###", md_escape(task))
         mut ri := 0
         while ri < len(records) {
             r := records[ri]
             if "${r["task_name"]}" == task {
-                acc = push(acc, "- " + display(r["id"]) + " — " + display(r["status"]) + " (" + display(r["model"]) + ")")
+                acc = push(acc, "- " + md_escape(display(r["id"])) + " — " + md_escape(display(r["status"])) + " (" + md_escape(display(r["model"])) + ")")
             }
             ri = ri + 1
         }
@@ -432,10 +495,10 @@ func append_grouped(out, records, field) {
         items := r[field]
         if len(items) > 0 {
             any = true
-            acc = append_md_heading(acc, "###", display(r["id"]))
+            acc = append_md_heading(acc, "###", md_escape(display(r["id"])))
             mut j := 0
             while j < len(items) {
-                acc = push(acc, "- " + entry_text(items[j]))
+                acc = push(acc, "- " + md_escape(entry_text(items[j])))
                 j = j + 1
             }
             acc = push(acc, "")
@@ -452,9 +515,32 @@ func append_grouped(out, records, field) {
 # Bare text of an entry, dropping the timestamp prefix for compact markdown.
 func entry_text(item) {
     if type(item) == "dict" {
-        return display_or(item["text"], "")
+        return field_or(item, "text", "")
     }
     return "${item}"
+}
+
+func append_tests(out, records) {
+    mut acc := out
+    mut any := false
+    mut i := 0
+    while i < len(records) {
+        r := records[i]
+        tests := r["tests"]
+        if len(tests) > 0 {
+            any = true
+            acc = append_md_heading(acc, "###", md_escape(display(r["id"])))
+            mut j := 0
+            while j < len(tests) {
+                acc = push(acc, "- " + md_escape(test_text(tests[j])))
+                j = j + 1
+            }
+            acc = push(acc, "")
+        }
+        i = i + 1
+    }
+    if any == false { acc = push_lines(acc, ["None.", ""]) }
+    return acc
 }
 
 # Distinct task names in first-seen order.

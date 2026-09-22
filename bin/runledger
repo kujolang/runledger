@@ -10,6 +10,10 @@
 #   KUJO=/path/to/kujo/target/release/kujo runledger list
 set -euo pipefail
 
+# Receipts may contain private prompts, repository paths, verdicts, and usage.
+# Protect new files and directories even when the invoking shell is permissive.
+umask 077
+
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 KUJO="${KUJO:-kujo}"
 

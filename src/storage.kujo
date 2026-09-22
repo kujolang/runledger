@@ -46,12 +46,6 @@ export func is_safe_run_id(id) {
     return true
 }
 
-# Quote a path for safe inclusion in shell test commands.
-func shq(path) {
-    escaped := replace_str(path, "'", "'\\''")
-    return "'" + escaped + "'"
-}
-
 # Create a directory tree one segment at a time.
 func ensure_dir_tree(path) {
     if path == "" || path == "." {
@@ -100,8 +94,8 @@ func parent_dir(path) {
 # uses a unique sibling file, syncs it, and promotes it atomically, avoiding
 # collisions between writes that happen in the same clock tick.
 export func write_atomic_text(path, content) {
-    ensure_dir_tree(parent_dir(path))
     try {
+        ensure_dir_tree(parent_dir(path))
         write_file_atomic(path, content, true)
         return {"ok": path}
     } except error {
@@ -145,7 +139,11 @@ export func acquire_record_lock(ledger_dir, id) {
     if is_safe_run_id(id) == false {
         return {"error": "invalid run id (use letters, digits, hyphen, underscore, or period)"}
     }
-    ensure_dir_tree(locks_dir(ledger_dir))
+    try {
+        ensure_dir_tree(locks_dir(ledger_dir))
+    } except directory_error {
+        return {"error": "cannot create ledger locks directory: " + locks_dir(ledger_dir)}
+    }
     path := record_lock_path(ledger_dir, id)
     token := id + "-" + to_string(current_timestamp()) + "-" + to_string(random_int(100000, 999999))
     started_at := current_timestamp()
@@ -287,7 +285,11 @@ export func save_new(ledger_dir, record) {
     if is_safe_run_id(record["id"]) == false {
         return {"error": "invalid run id (use letters, digits, hyphen, underscore, or period)"}
     }
-    ensure_ledger(ledger_dir)
+    try {
+        ensure_ledger(ledger_dir)
+    } except directory_error {
+        return {"error": "cannot create ledger runs directory: " + runs_dir(ledger_dir)}
+    }
     path := run_path(ledger_dir, record["id"])
     if file_exists(path) {
         return {"error": "run already exists: " + record["id"], "conflict": true}
@@ -313,7 +315,11 @@ export func save_update(ledger_dir, record) {
     if is_safe_run_id(record["id"]) == false {
         return {"error": "invalid run id (use letters, digits, hyphen, underscore, or period)"}
     }
-    ensure_ledger(ledger_dir)
+    try {
+        ensure_ledger(ledger_dir)
+    } except directory_error {
+        return {"error": "cannot create ledger runs directory: " + runs_dir(ledger_dir)}
+    }
     path := run_path(ledger_dir, record["id"])
     res := write_atomic_text(path, to_json_pretty(record))
     if has_key(res, "error") == 1 {
@@ -334,10 +340,6 @@ export func load(ledger_dir, id) {
     }
     if path_is_dir(path) {
         return {"error": "run path is a directory: " + path}
-    }
-    r := execute_status("test -r " + shq(path))
-    if r.exitcode != 0 {
-        return {"error": "cannot read run file: " + path}
     }
     mut raw := ""
     try {
@@ -367,35 +369,63 @@ export func load(ledger_dir, id) {
 # Load every run in the ledger, sorted by id (which is chronological by date
 # prefix). Skips unreadable files rather than failing the whole listing.
 export func list_records(ledger_dir) {
+    return inspect_records(ledger_dir)["records"]
+}
+
+# Inspect every receipt without hiding malformed/unreadable entries. The
+# default listing keeps its historical skip-invalid behavior; strict callers
+# can fail on these diagnostics rather than consuming an incomplete ledger.
+export func inspect_records(ledger_dir) {
     rd := runs_dir(ledger_dir)
     mut out := []
-    if path_is_dir(rd) == false {
-        return out
+    mut errors := []
+    if file_exists(ledger_dir) && path_is_dir(ledger_dir) == false {
+        return {"records": out, "errors": [{"file": ledger_dir, "error": "ledger path is not a directory: " + ledger_dir}]}
     }
-    entries := list_dir(rd)
-    mut names := []
+    if path_is_dir(rd) == false {
+        return {"records": out, "errors": errors}
+    }
+    mut entries := []
+    try {
+        entries = list_dir(rd)
+    } except list_error {
+        return {"records": out, "errors": [{"file": rd, "error": "cannot list runs directory: " + rd}]}
+    }
+    mut names := range(0, len(entries))
+    mut name_count := 0
     mut e := 0
     while e < len(entries) {
         name := entries[e]
         if ends_with(name, ".json") {
-            names = push(names, name)
+            names[name_count] := name
+            name_count = name_count + 1
         }
         e = e + 1
     }
-    names = sort(names)
+    names = sort(slice(names, 0, name_count))
+    out = range(0, len(names))
+    errors = range(0, len(names))
+    mut valid_count := 0
+    mut error_count := 0
     mut k := 0
     while k < len(names) {
         name := names[k]
         id := substring(name, 0, len(name) - 5)
         rec := load(ledger_dir, id)
-        if type(rec) == "dict" {
-            if truthy(has_key(rec, "id")) {
-                out = push(out, rec)
+        if type(rec) == "dict" && truthy(has_key(rec, "id")) {
+            out[valid_count] := rec
+            valid_count = valid_count + 1
+        } else {
+            message := "missing run file: " + run_path(ledger_dir, id)
+            if type(rec) == "dict" && has_key(rec, "error") == 1 {
+                message = rec["error"]
             }
+            errors[error_count] := {"file": name, "error": message}
+            error_count = error_count + 1
         }
         k = k + 1
     }
-    return out
+    return {"records": slice(out, 0, valid_count), "errors": slice(errors, 0, error_count)}
 }
 
 func normalize_record(record) {

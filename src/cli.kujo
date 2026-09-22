@@ -10,7 +10,7 @@
 #   2  usage error (bad/missing arguments)
 
 from src.record import new_record, is_valid_status, valid_statuses, empty_usage, empty_cost, empty_correlation
-from src.storage import generate_id, save_new, load, list_records, run_path, write_atomic_text, update_record
+from src.storage import generate_id, save_new, load, inspect_records, run_path, write_atomic_text, update_record
 from src.gitmeta import start_metadata, end_metadata
 from src.render import render_list, render_show, render_compare, render_report
 from src.args import parse_args
@@ -25,17 +25,20 @@ func usage(command) {
     usages := {
         "start": "usage: runledger start --model <m> --provider <p> --task <t> [--prompt <file>] [--repo <path>] [--ledger <dir>]",
         "finish": "usage: runledger finish <run-id> --status <pass|partial|fail|abandoned> --verdict \"text\" [--notes <text>] [--repo <path>] [--ledger <dir>]",
-        "list": "usage: runledger list [--json] [--ledger <dir>]",
+        "list": "usage: runledger list [--json] [--strict] [--ledger <dir>]",
+        "verify": "usage: runledger verify [--json] [--ledger <dir>]",
         "show": "usage: runledger show <run-id> [--json] [--ledger <dir>]",
         "note": "usage: runledger note <run-id> \"note text\" [--ledger <dir>]",
         "note-short": "usage: runledger note <run-id> \"note text\"",
+        "command": "usage: runledger command <run-id> \"command text\" [--ledger <dir>]",
+        "test": "usage: runledger test <run-id> \"test name\" --status <pass|fail|skip> [--details <text>] [--ledger <dir>]",
         "followup": "usage: runledger followup <run-id> \"follow-up text\" [--ledger <dir>]",
         "followup-short": "usage: runledger followup <run-id> \"follow-up text\"",
         "usage": "usage: runledger usage <run-id> [--input N] [--output N] [--cache-read N] [--cache-write N] [--ledger <dir>]",
         "cost": "usage: runledger cost <run-id> [--total N] [--currency CODE] [--input N] [--output N] [--cache N] [--ledger <dir>]",
         "correlate": "usage: runledger correlate <run-id> [--watchdog-trace ID] [--watchdog-run ID] [--dispatch-run ID] [--relay-run ID] [--eval-run ID] [--ledger <dir>]",
-        "compare": "usage: runledger compare [--task <name>] [--json] [--ledger <dir>]",
-        "report": "usage: runledger report [--task <name>] [--output <file>] [--ledger <dir>]"
+        "compare": "usage: runledger compare [--task <name>] [--json] [--strict] [--ledger <dir>]",
+        "report": "usage: runledger report [--task <name>] [--output <file>] [--strict] [--ledger <dir>]"
     }
     if has_key(usages, command) == 1 {
         return usages[command]
@@ -302,20 +305,46 @@ func start_or_dash(v) {
 }
 
 func cmd_list(tokens) {
-    parsed := parse_args(tokens, ["json"])
-    if validate_parsed(parsed, ["json", "ledger"], 0, "list") == false {
+    parsed := parse_args(tokens, ["json", "strict"])
+    if validate_parsed(parsed, ["json", "strict", "ledger"], 0, "list") == false {
         return 2
     }
     ledger := resolve_ledger(parsed)
     if type(ledger) == "null" {
         return usage_error(usage("list"))
     }
-    recs := list_records(ledger)
+    inspection := inspect_records(ledger)
+    if has_flag(parsed, "strict") && report_record_errors(inspection) { return 1 }
+    recs := inspection["records"]
     if has_flag(parsed, "json") {
         print(to_json_pretty(recs))
         return 0
     }
     print(render_list(recs))
+    return 0
+}
+
+func report_record_errors(inspection) {
+    errors := inspection["errors"]
+    if len(errors) == 0 { return false }
+    for item in errors { print_error(item["error"]) }
+    return true
+}
+
+func cmd_verify(tokens) {
+    parsed := parse_args(tokens, ["json"])
+    if validate_parsed(parsed, ["json", "ledger"], 0, "verify") == false { return 2 }
+    ledger := resolve_ledger(parsed)
+    if type(ledger) == "null" { return usage_error(usage("verify")) }
+    inspection := inspect_records(ledger)
+    if has_flag(parsed, "json") {
+        print(to_json_pretty({"valid": len(inspection["records"]), "errors": inspection["errors"]}))
+    } else if len(inspection["errors"]) == 0 {
+        print("Verified " + to_string(len(inspection["records"])) + " run(s): no invalid entries")
+    } else {
+        report_record_errors(inspection)
+    }
+    if len(inspection["errors"]) > 0 { return 1 }
     return 0
 }
 
@@ -401,6 +430,56 @@ func cmd_followup(tokens) {
         return 1
     }
     print("Added follow-up to " + id)
+    return 0
+}
+
+# Record what an operator ran without executing arbitrary text. Both receipt
+# arrays are bounded to keep this convenience feature from growing forever.
+func cmd_command(tokens) {
+    parsed := parse_args(tokens, [])
+    if validate_parsed(parsed, ["ledger"], 2, "command") == false { return 2 }
+    ledger := resolve_ledger(parsed)
+    id := first_positional(parsed)
+    text := second_positional(parsed)
+    if type(ledger) == "null" || type(id) == "null" || bounded_text(text, 2000) == false {
+        return usage_error(usage("command"))
+    }
+    res := update_record(ledger, id, func(rec) {
+        if len(rec["commands"]) >= 1000 { return {"error": "run already has 1000 recorded commands"} }
+        rec["commands"] := push(rec["commands"], {"at": now_utc(), "text": text})
+        touch(rec)
+        return {"record": rec}
+    })
+    if has_key(res, "error") == 1 { print_error(res["error"]); return 1 }
+    print("Recorded command for " + id)
+    return 0
+}
+
+func bounded_text(value, maximum) {
+    return type(value) == "string" && trim(value) != "" && len(value) <= maximum
+}
+
+func cmd_test(tokens) {
+    parsed := parse_args(tokens, [])
+    if validate_parsed(parsed, ["status", "details", "ledger"], 2, "test") == false { return 2 }
+    ledger := resolve_ledger(parsed)
+    id := first_positional(parsed)
+    name := second_positional(parsed)
+    status := flag(parsed, "status")
+    details := flag(parsed, "details")
+    if type(ledger) == "null" || type(id) == "null" || bounded_text(name, 200) == false ||
+       (status != "pass" && status != "fail" && status != "skip") ||
+       (type(details) != "null" && bounded_text(details, 2000) == false) {
+        return usage_error(usage("test"))
+    }
+    res := update_record(ledger, id, func(rec) {
+        if len(rec["tests"]) >= 1000 { return {"error": "run already has 1000 recorded tests"} }
+        rec["tests"] := push(rec["tests"], {"at": now_utc(), "name": name, "status": status, "details": details})
+        touch(rec)
+        return {"record": rec}
+    })
+    if has_key(res, "error") == 1 { print_error(res["error"]); return 1 }
+    print("Recorded test for " + id)
     return 0
 }
 
@@ -650,15 +729,17 @@ func is_digit(ch) {
 }
 
 func cmd_compare(tokens) {
-    parsed := parse_args(tokens, ["json"])
-    if validate_parsed(parsed, ["task", "json", "ledger"], 0, "compare") == false {
+    parsed := parse_args(tokens, ["json", "strict"])
+    if validate_parsed(parsed, ["task", "json", "strict", "ledger"], 0, "compare") == false {
         return 2
     }
     ledger := resolve_ledger(parsed)
     if type(ledger) == "null" {
         return usage_error(usage("compare"))
     }
-    recs := list_records(ledger)
+    inspection := inspect_records(ledger)
+    if has_flag(parsed, "strict") && report_record_errors(inspection) { return 1 }
+    recs := inspection["records"]
     task := flag(parsed, "task")
     if type(task) != "null" && trim(task) == "" {
         return usage_error(usage("compare"))
@@ -685,15 +766,17 @@ func filter_by_task(records, task) {
 }
 
 func cmd_report(tokens) {
-    parsed := parse_args(tokens, [])
-    if validate_parsed(parsed, ["task", "output", "ledger"], 0, "report") == false {
+    parsed := parse_args(tokens, ["strict"])
+    if validate_parsed(parsed, ["task", "output", "strict", "ledger"], 0, "report") == false {
         return 2
     }
     ledger := resolve_ledger(parsed)
     if type(ledger) == "null" {
         return usage_error(usage("report"))
     }
-    recs := list_records(ledger)
+    inspection := inspect_records(ledger)
+    if has_flag(parsed, "strict") && report_record_errors(inspection) { return 1 }
+    recs := inspection["records"]
     task := flag(parsed, "task")
     if type(task) != "null" && trim(task) == "" {
         return usage_error(usage("report"))
@@ -752,12 +835,18 @@ func print_help() {
         "             usage: runledger finish <run-id> --status <pass|partial|fail|abandoned> --verdict \"text\"",
         "  list       List recorded runs in a compact table",
         "             usage: runledger list [--json]",
+        "  verify     Check every run file and report invalid entries",
+        "             usage: runledger verify [--json]",
         "  show       Show one run (add --json for the raw record)",
         "             usage: runledger show <run-id> [--json]",
         "  note       Add a timestamped note to a run",
         "             usage: runledger note <run-id> \"note text\"",
         "  followup   Add a follow-up item to a run",
         "             usage: runledger followup <run-id> \"follow-up text\"",
+        "  command    Record a command description (does not execute it)",
+        "             usage: runledger command <run-id> \"command text\"",
+        "  test       Record a manual test outcome",
+        "             usage: runledger test <run-id> \"test name\" --status <pass|fail|skip>",
         "  usage      Record token usage for a run",
         "             usage: runledger usage <run-id> [--input N] [--output N] [--cache-read N] [--cache-write N]",
         "  cost       Record cost for a run",
@@ -804,6 +893,9 @@ export func main(argv) {
     if cmd == "list" {
         return cmd_list(rest)
     }
+    if cmd == "verify" {
+        return cmd_verify(rest)
+    }
     if cmd == "show" {
         return cmd_show(rest)
     }
@@ -812,6 +904,12 @@ export func main(argv) {
     }
     if cmd == "followup" {
         return cmd_followup(rest)
+    }
+    if cmd == "command" {
+        return cmd_command(rest)
+    }
+    if cmd == "test" {
+        return cmd_test(rest)
     }
     if cmd == "usage" {
         return cmd_usage(rest)

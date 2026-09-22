@@ -48,12 +48,18 @@ Commands:
              usage: runledger finish <run-id> --status <pass|partial|fail|abandoned> --verdict "text"
   list       List recorded runs in a compact table
              usage: runledger list [--json]
+  verify     Check every run file and report invalid entries
+             usage: runledger verify [--json]
   show       Show one run (add --json for the raw record)
              usage: runledger show <run-id> [--json]
   note       Add a timestamped note to a run
              usage: runledger note <run-id> "note text"
   followup   Add a follow-up item to a run
              usage: runledger followup <run-id> "follow-up text"
+  command    Record a command description (does not execute it)
+             usage: runledger command <run-id> "command text"
+  test       Record a manual test outcome
+             usage: runledger test <run-id> "test name" --status <pass|fail|skip>
   usage      Record token usage for a run
              usage: runledger usage <run-id> [--input N] [--output N] [--cache-read N] [--cache-write N]
   cost       Record cost for a run
@@ -95,9 +101,16 @@ printf "base\n" > "$REPO/base.txt"
 git -C "$REPO" add base.txt
 git -C "$REPO" commit -qm "init"
 
-START_OUT="$(KUJO="$KUJO_BIN" "$RUNLEDGER" start --provider openai --model codex --task "CLI Test" --repo "$REPO" --ledger "$LEDGER")"
+START_OUT="$(umask 000; KUJO="$KUJO_BIN" "$RUNLEDGER" start --provider openai --model codex --task "CLI Test" --repo "$REPO" --ledger "$LEDGER")"
 RID="$(printf '%s\n' "$START_OUT" | sed -n '1s/^Started run: //p')"
 [[ -n "$RID" ]] || fail "did not parse run id from start output"
+if stat -f '%Lp' "$LEDGER" >/dev/null 2>&1; then
+  [[ "$(stat -f '%Lp' "$LEDGER")" == 700 ]] || fail "ledger directory is not private"
+  [[ "$(stat -f '%Lp' "$LEDGER/runs/$RID.json")" == 600 ]] || fail "receipt is not private"
+else
+  [[ "$(stat -c '%a' "$LEDGER")" == 700 ]] || fail "ledger directory is not private"
+  [[ "$(stat -c '%a' "$LEDGER/runs/$RID.json")" == 600 ]] || fail "receipt is not private"
+fi
 
 expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" finish "$RID" --verdict "missing status" --ledger "$LEDGER"
 expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" finish "$RID" --status pass --ledger "$LEDGER"
@@ -106,6 +119,10 @@ expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" finish "$RID" --status pass --ve
 expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" usage "$RID" --input notanint --ledger "$LEDGER"
 expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" cost "$RID" --total notafloat --ledger "$LEDGER"
 expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" cost "$RID" --currency --ledger "$LEDGER"
+expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" test "$RID" "suite" --status green --ledger "$LEDGER"
+expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" command "$RID" "   " --ledger "$LEDGER"
+expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" command "$RID" "$(printf '%02001d' 0)" --ledger "$LEDGER"
+expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" test "$RID" "$(printf '%0201d' 0)" --status pass --ledger "$LEDGER"
 expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" list --unknown value --ledger "$LEDGER"
 expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" show "$RID" extra --ledger "$LEDGER"
 expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" list --json=false --ledger "$LEDGER"
@@ -126,6 +143,11 @@ expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" report --output --ledger "$LEDGE
 expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" compare --task --ledger "$LEDGER"
 expect_exit 2 env KUJO="$KUJO_BIN" "$RUNLEDGER" report --task --ledger "$LEDGER"
 expect_exit 1 env KUJO="$KUJO_BIN" "$RUNLEDGER" show "../escape" --ledger "$LEDGER"
+printf 'not a directory\n' > "$TMPROOT/ledger-as-file"
+expect_exit 1 env KUJO="$KUJO_BIN" "$RUNLEDGER" start --provider local --model m --task t --repo "$PLAIN" --ledger "$TMPROOT/ledger-as-file"
+grep -q '^error: cannot create ledger runs directory:' /tmp/runledger-cli-last.out || fail "invalid ledger path did not fail cleanly"
+expect_exit 1 env KUJO="$KUJO_BIN" "$RUNLEDGER" verify --ledger "$TMPROOT/ledger-as-file"
+grep -q '^error: ledger path is not a directory:' /tmp/runledger-cli-last.out || fail "verify hid bad ledger root"
 
 NESTED_LEDGER="$TMPROOT/nested/ledger/path"
 NESTED_START="$(KUJO="$KUJO_BIN" "$RUNLEDGER" start --provider local --model local-agent --task "Nested Ledger" --repo "$PLAIN" --ledger "$NESTED_LEDGER")"
@@ -133,6 +155,7 @@ NESTED_RID="$(printf '%s\n' "$NESTED_START" | sed -n '1s/^Started run: //p')"
 [[ -s "$NESTED_LEDGER/runs/$NESTED_RID.json" ]] || fail "nested ledger run file missing"
 
 KUJO="$KUJO_BIN" "$RUNLEDGER" note "$RID" "cli note" --ledger "$LEDGER"
+KUJO="$KUJO_BIN" "$RUNLEDGER" note "$RID" '![remote](https://example.invalid/track)' --ledger "$LEDGER"
 KUJO="$KUJO_BIN" "$RUNLEDGER" note "$RID" --ledger "$LEDGER" -- "--dash-prefixed note"
 
 # Concurrent read-modify-write commands must serialize without losing entries.
@@ -157,6 +180,10 @@ grep -q '^error: run is busy:' /tmp/runledger-cli-last.out || fail "lock conflic
 rm -f "$LOCK_PATH"
 
 KUJO="$KUJO_BIN" "$RUNLEDGER" followup "$RID" "cli followup" --ledger "$LEDGER"
+KUJO="$KUJO_BIN" "$RUNLEDGER" command "$RID" "touch $TMPROOT/must-not-exist" --ledger "$LEDGER"
+[[ ! -e "$TMPROOT/must-not-exist" ]] || fail "recorded command was executed"
+KUJO="$KUJO_BIN" "$RUNLEDGER" test "$RID" "unit suite" --status pass --details "81 assertions" --ledger "$LEDGER"
+KUJO="$KUJO_BIN" "$RUNLEDGER" test "$RID" "smoke suite" --status skip --ledger "$LEDGER"
 KUJO="$KUJO_BIN" "$RUNLEDGER" usage "$RID" --input 10 --output 2 --cache-read 1 --cache-write 0 --ledger "$LEDGER"
 KUJO="$KUJO_BIN" "$RUNLEDGER" cost "$RID" --total 0.5 --currency USD --ledger "$LEDGER"
 KUJO="$KUJO_BIN" "$RUNLEDGER" correlate "$RID" --watchdog-trace 0123456789abcdef0123456789abcdef --dispatch-run dispatch:run-1 --relay-run relay:run-1 --eval-run eval:run-1 --ledger "$LEDGER"
@@ -166,21 +193,48 @@ expect_exit 1 env KUJO="$KUJO_BIN" "$RUNLEDGER" finish "$RID" --status fail --ve
 
 SHOW_JSON="$(KUJO="$KUJO_BIN" "$RUNLEDGER" show "$RID" --json --ledger "$LEDGER")"
 [[ "$SHOW_JSON" == *'"verdict": "ok"'* ]] || fail "show --json missing verdict"
+[[ "$SHOW_JSON" == *'"name": "unit suite"'* ]] || fail "show --json missing recorded test"
+[[ "$SHOW_JSON" == *'"text": "touch '* ]] || fail "show --json missing recorded command"
+SHOW_TEXT="$(KUJO="$KUJO_BIN" "$RUNLEDGER" show "$RID" --ledger "$LEDGER")"
+[[ "$SHOW_TEXT" == *'Recorded commands (1):'* && "$SHOW_TEXT" == *'Recorded tests (2):'* ]] || fail "show omitted evidence"
 [[ "$SHOW_JSON" == *'"watchdog_trace_id": "0123456789abcdef0123456789abcdef"'* ]] || fail "show --json missing Watchdog correlation"
 LIST_JSON="$(KUJO="$KUJO_BIN" "$RUNLEDGER" list --json --ledger "$LEDGER")"
 [[ "$LIST_JSON" == *"\"$RID\""* ]] || fail "list --json missing run id"
+KUJO="$KUJO_BIN" "$RUNLEDGER" verify --ledger "$LEDGER" | grep -q 'no invalid entries' || fail "valid ledger did not verify"
 COMPARE_JSON="$(KUJO="$KUJO_BIN" "$RUNLEDGER" compare --json --task "CLI Test" --ledger "$LEDGER")"
 [[ "$COMPARE_JSON" == *"\"$RID\""* ]] || fail "compare --json missing run id"
 
 REPORT="$TMPROOT/RUNLEDGER_REPORT.md"
 KUJO="$KUJO_BIN" "$RUNLEDGER" report --task "CLI Test" --output "$REPORT" --ledger "$LEDGER"
 [[ -s "$REPORT" ]] || fail "report file missing or empty"
+grep -q '^## Recorded tests' "$REPORT" || fail "report omitted test evidence"
+if grep -Fq '![remote](https://example.invalid/track)' "$REPORT"; then
+  fail "report left embedded Markdown image active"
+fi
 REPORT_NESTED="$TMPROOT/nested/out/RUNLEDGER_REPORT.md"
 KUJO="$KUJO_BIN" "$RUNLEDGER" report --task "CLI Test" --output "$REPORT_NESTED" --ledger "$LEDGER"
 [[ -s "$REPORT_NESTED" ]] || fail "nested report file missing or empty"
 mkdir -p "$TMPROOT/report-target-is-directory"
 expect_exit 1 env KUJO="$KUJO_BIN" "$RUNLEDGER" report --output "$TMPROOT/report-target-is-directory" --ledger "$LEDGER"
 grep -q '^error: cannot write file:' /tmp/runledger-cli-last.out || fail "report write failure was not actionable"
+
+# POSIX read/write permission failures are operational errors; a privileged
+# runner may bypass chmod restrictions, in which case this fixture is skipped.
+PROTECTED_DIR="$TMPROOT/protected"
+mkdir -p "$PROTECTED_DIR"
+chmod 500 "$PROTECTED_DIR"
+if ! (printf 'probe\n' > "$PROTECTED_DIR/probe") 2>/dev/null; then
+  expect_exit 1 env KUJO="$KUJO_BIN" "$RUNLEDGER" report --output "$PROTECTED_DIR/report.md" --ledger "$LEDGER"
+  grep -q '^error: cannot write file:' /tmp/runledger-cli-last.out || fail "permission-denied report failure was not actionable"
+fi
+chmod 700 "$PROTECTED_DIR"
+
+chmod 000 "$LEDGER/runs"
+if ! (ls "$LEDGER/runs" >/dev/null 2>&1); then
+  expect_exit 1 env KUJO="$KUJO_BIN" "$RUNLEDGER" verify --ledger "$LEDGER"
+  grep -q '^error: cannot list runs directory:' /tmp/runledger-cli-last.out || fail "unreadable ledger directory was hidden"
+fi
+chmod 700 "$LEDGER/runs"
 
 # A completed, clean commit is still a run change, and committed + uncommitted
 # paths are reported once each.
@@ -215,10 +269,55 @@ SHOW3_JSON="$(KUJO="$KUJO_BIN" "$RUNLEDGER" show "$RID3" --json --ledger "$LEDGE
 [[ "$SHOW3_JSON" == *'"changed_files": ['* ]] || fail "no-commit run missing changed_files"
 [[ "$SHOW3_JSON" == *'"staged.txt"'* ]] || fail "no-commit staged file not detected"
 
+# An explicit different repository cannot resolve the original start commit;
+# finish should still capture its worktree safely without claiming a diff.
+OTHER_REPO="$TMPROOT/other-repo"
+mkdir -p "$OTHER_REPO"
+git -C "$OTHER_REPO" init -q
+git -C "$OTHER_REPO" config user.email test@example.com
+git -C "$OTHER_REPO" config user.name runledger-test
+printf 'before\n' > "$OTHER_REPO/base.txt"
+git -C "$OTHER_REPO" add base.txt
+git -C "$OTHER_REPO" commit -qm base
+OVERRIDE_START="$(KUJO="$KUJO_BIN" "$RUNLEDGER" start --provider local --model local-agent --task "Repo Override" --repo "$REPO" --ledger "$LEDGER")"
+OVERRIDE_RID="$(printf '%s\n' "$OVERRIDE_START" | sed -n '1s/^Started run: //p')"
+printf 'untracked\n' > "$OTHER_REPO/other.txt"
+KUJO="$KUJO_BIN" "$RUNLEDGER" finish "$OVERRIDE_RID" --status partial --verdict "repo override" --repo "$OTHER_REPO" --ledger "$LEDGER"
+OVERRIDE_JSON="$(KUJO="$KUJO_BIN" "$RUNLEDGER" show "$OVERRIDE_RID" --json --ledger "$LEDGER")"
+[[ "$OVERRIDE_JSON" == *'"other.txt"'* ]] || fail "override repository lost working-tree evidence"
+
+# Git SHA-256 repositories produce 64-character commit IDs. Skip only when the
+# installed Git cannot create them; normal SHA-1 behavior is tested above.
+SHA_REPO="$TMPROOT/sha256-repo"
+if git init -q --object-format=sha256 "$SHA_REPO" >/dev/null 2>&1; then
+  git -C "$SHA_REPO" config user.email test@example.com
+  git -C "$SHA_REPO" config user.name runledger-test
+  printf 'before\n' > "$SHA_REPO/base.txt"
+  git -C "$SHA_REPO" add base.txt
+  git -C "$SHA_REPO" commit -qm base
+  SHA_START="$(KUJO="$KUJO_BIN" "$RUNLEDGER" start --provider local --model local-agent --task "SHA256" --repo "$SHA_REPO" --ledger "$LEDGER")"
+  SHA_RID="$(printf '%s\n' "$SHA_START" | sed -n '1s/^Started run: //p')"
+  printf 'after\n' > "$SHA_REPO/sha-file.txt"
+  git -C "$SHA_REPO" add sha-file.txt
+  git -C "$SHA_REPO" commit -qm after
+  KUJO="$KUJO_BIN" "$RUNLEDGER" finish "$SHA_RID" --status pass --verdict "sha256" --ledger "$LEDGER"
+  SHA_JSON="$(KUJO="$KUJO_BIN" "$RUNLEDGER" show "$SHA_RID" --json --ledger "$LEDGER")"
+  [[ "$SHA_JSON" == *'"sha-file.txt"'* ]] || fail "SHA-256 committed file missing"
+else
+  echo "SHA-256 Git fixture: unsupported by installed Git (skipped)" >&2
+fi
+
 # Non-object JSON run files should be ignored without crashing.
 cat > "$LEDGER/runs/not-an-object.json" <<'JSON'
 []
 JSON
+expect_exit 1 env KUJO="$KUJO_BIN" "$RUNLEDGER" verify --ledger "$LEDGER"
+grep -q 'invalid run file shape:' /tmp/runledger-cli-last.out || fail "verify hid invalid receipt"
+expect_exit 1 env KUJO="$KUJO_BIN" "$RUNLEDGER" list --strict --json --ledger "$LEDGER"
+expect_exit 1 env KUJO="$KUJO_BIN" "$RUNLEDGER" compare --strict --ledger "$LEDGER"
+expect_exit 1 env KUJO="$KUJO_BIN" "$RUNLEDGER" report --strict --ledger "$LEDGER"
+VERIFY_JSON="$(KUJO="$KUJO_BIN" "$RUNLEDGER" verify --json --ledger "$LEDGER" || true)"
+[[ "$VERIFY_JSON" == *'"file": "not-an-object.json"'* ]] || fail "verify JSON did not identify invalid receipt"
 KUJO="$KUJO_BIN" "$RUNLEDGER" list --ledger "$LEDGER" >/tmp/runledger-cli-list-shape.out 2>&1 || fail "list crashed on non-object json run file"
 KUJO="$KUJO_BIN" "$RUNLEDGER" report --ledger "$LEDGER" >/tmp/runledger-cli-report-shape.out 2>&1 || fail "report crashed on non-object json run file"
 
