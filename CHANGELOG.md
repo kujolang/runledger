@@ -4,6 +4,10 @@ All notable changes to RunLedger are documented here.
 
 ## [Unreleased]
 
+- Include files committed between start and finish in the changed-file receipt, even when the checkout finishes clean.
+- Move the root argument parser into `src/args.kujo`; retain `runledger.kujo` as the required launcher entrypoint.
+- Restrict run IDs to portable printable characters and isolate the module-test workspace with a unique temporary directory.
+
 ## [1.1.0] - 2026-08-30
 
 - Serialize receipt mutations with per-record ownership locks so concurrent CLI updates cannot silently overwrite one another.

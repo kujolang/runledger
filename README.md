@@ -9,9 +9,10 @@ A local ledger for AI-agent build runs.
 When you hand several agents (Claude, Codex, DeepSeek, a local model, a future
 Kujo-native agent) the same prompt and ask them to build the same thing,
 RunLedger gives you a repeatable, inspectable **receipt** for each attempt: what
-model ran, against which repo and commit, what files changed, whether tests
-passed, optional token/cost data you recorded, your verdict, and the follow-ups
-needed.
+model ran, against which repo and commit, what files changed, optional
+token/cost data you recorded, your verdict, and the follow-ups needed. Test
+results must currently be described in your verdict or notes; the reserved
+`tests` array has no CLI writer yet.
 
 It is built in the Kujo language runtime and stores everything as plain JSON on
 your local disk. No database, no network, no API key.
@@ -23,7 +24,7 @@ compares runs so you can answer questions like:
 
 - Which model followed the prompt best?
 - Which run changed the fewest files?
-- Which run produced passing tests?
+- Which run did I mark as passing its tests in the verdict or notes?
 - Which run needed the fewest follow-up fixes?
 - Which run was most expensive?
 - Which run produced the cleanest handoff?
@@ -57,8 +58,11 @@ prioritizes:
 - markdown report output that stays stable when user text contains table
   punctuation.
 
-The next major robustness frontier is optional higher-level workflow capture:
-recording commands/tests and adding machine-readable report metadata.
+This is not a universal enterprise-readiness certification: shared-ledger
+authorization, large-ledger scaling, and a formal security review remain open.
+See [the next review](docs/reviews/2026-09-22-readiness.md) for scoped evidence
+and priorities. The tool remains a local receipt store, not a multi-tenant
+service or an automated judge.
 
 ## Installation
 
@@ -257,7 +261,7 @@ Each run is a single JSON object. Fields:
 | `repo_path` | Repo the run worked on. |
 | `start_commit` / `end_commit` | Git commit at start/finish (null if no git). |
 | `git_dirty_start` / `git_dirty_end` | Working-tree dirty state (null if no git). |
-| `changed_files` | Files changed in the working tree at finish. |
+| `changed_files` | Files changed between the start/end commits (when available), plus staged, unstaged, and untracked files at finish; names are de-duplicated. |
 | `commands` / `tests` | Reserved arrays for reported commands and test results. |
 | `usage` | `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_write_tokens`. |
 | `cost` | `currency`, `input_cost`, `output_cost`, `cache_cost`, `total_cost`. |
@@ -356,6 +360,12 @@ stages, commits, resets, checks out, or otherwise mutates git state. If git is
 absent or the path isn't a repo, those fields are recorded as `null`/empty and
 the command still succeeds.
 
+Changes committed after `start` now count even when the worktree is clean at
+`finish`. The recorded file set also includes any changes still uncommitted at
+finish. These are repository observations, not proof that a particular agent
+authored every change. Git paths with unusual embedded newlines or quoting are
+not yet fully represented; see the review for the remaining limitation.
+
 ## Running the tests
 
 ```bash
@@ -364,8 +374,8 @@ the command still succeeds.
 kujo run tests/runledger_test.kujo
 ```
 
-The suite is filesystem-isolated (it uses a throwaway ledger and a throwaway git
-repo under the system temp dir), needs no network or API key, and exits non-zero
+The suite is filesystem-isolated (it uses uniquely named temporary ledgers and
+git repos), needs no network or API key, and exits non-zero
 on any failure. `tests/run.sh` runs both the module-level Kujo test harness and
 CLI integration checks through `bin/runledger`, including concurrent-writer and
 lock-ownership regression cases.
@@ -403,9 +413,10 @@ runledger/
     util.kujo             # slugs, time, padding, display helpers
     record.kujo           # run record shape + status validation
     storage.kujo          # ledger dir, id minting, safe save/load/list
+    args.kujo             # flag and positional argument parser
     gitmeta.kujo          # defensive read-only git metadata
     render.kujo           # tables, single-run view, markdown report
-    cli.kujo              # arg parsing + command dispatch
+    cli.kujo              # command validation, dispatch, and output
   tests/
     runledger_test.kujo   # test suite
     cli_integration.sh    # user-facing CLI checks
@@ -415,6 +426,8 @@ runledger/
     RUNLEDGER_REPORT.example.md  # sample generated report
   docs/audits/
     repository-hardening.md      # evidence-backed hardening receipt
+  docs/reviews/
+    2026-09-22-readiness.md       # next-session review and priorities
   .agent/
     next-agent-guide.md
 ```

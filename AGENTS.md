@@ -7,6 +7,7 @@ This repo is a small local CLI in Kujo for recording AI-agent run receipts.
 - Entry point: `runledger.kujo`
 - Launcher: `bin/runledger`
 - Core modules:
+  - `src/args.kujo` flag and positional parsing
   - `src/cli.kujo` command parsing, UX, exit codes
   - `src/storage.kujo` local JSON persistence
   - `src/gitmeta.kujo` read-only git metadata collection
