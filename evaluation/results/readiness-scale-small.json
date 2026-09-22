@@ -1,0 +1,142 @@
+{
+  "baseline": "3cee875",
+  "current": "d30b337-equivalent working source",
+  "kujo": "kujo 1.4.0",
+  "samples": 2,
+  "warmups": 1,
+  "timeout_seconds": 120,
+  "sizes": {
+    "100": {
+      "list": {
+        "baseline": {
+          "samples": [
+            {
+              "seconds": 3.054,
+              "exit": 0,
+              "error": ""
+            },
+            {
+              "seconds": 3.248,
+              "exit": 0,
+              "error": ""
+            }
+          ],
+          "median_seconds": 3.151
+        },
+        "current": {
+          "samples": [
+            {
+              "seconds": 0.586,
+              "exit": 0,
+              "error": ""
+            },
+            {
+              "seconds": 0.685,
+              "exit": 0,
+              "error": ""
+            }
+          ],
+          "median_seconds": 0.6355
+        }
+      },
+      "report": {
+        "baseline": {
+          "samples": [
+            {
+              "seconds": 4.002,
+              "exit": 0,
+              "error": ""
+            },
+            {
+              "seconds": 3.585,
+              "exit": 0,
+              "error": ""
+            }
+          ],
+          "median_seconds": 3.7935
+        },
+        "current": {
+          "samples": [
+            {
+              "seconds": 1.497,
+              "exit": 0,
+              "error": ""
+            },
+            {
+              "seconds": 1.411,
+              "exit": 0,
+              "error": ""
+            }
+          ],
+          "median_seconds": 1.4540000000000002
+        }
+      }
+    },
+    "1000": {
+      "list": {
+        "baseline": {
+          "samples": [
+            {
+              "seconds": 36.915,
+              "exit": 0,
+              "error": ""
+            },
+            {
+              "seconds": 34.285,
+              "exit": 0,
+              "error": ""
+            }
+          ],
+          "median_seconds": 35.599999999999994
+        },
+        "current": {
+          "samples": [
+            {
+              "seconds": 6.175,
+              "exit": 0,
+              "error": ""
+            },
+            {
+              "seconds": 5.661,
+              "exit": 0,
+              "error": ""
+            }
+          ],
+          "median_seconds": 5.917999999999999
+        }
+      },
+      "report": {
+        "baseline": {
+          "samples": [
+            {
+              "seconds": 55.064,
+              "exit": 0,
+              "error": ""
+            },
+            {
+              "seconds": 64.199,
+              "exit": 0,
+              "error": ""
+            }
+          ],
+          "median_seconds": 59.6315
+        },
+        "current": {
+          "samples": [
+            {
+              "seconds": 25.1,
+              "exit": 0,
+              "error": ""
+            },
+            {
+              "seconds": 24.394,
+              "exit": 0,
+              "error": ""
+            }
+          ],
+          "median_seconds": 24.747
+        }
+      }
+    }
+  }
+}

@@ -10,9 +10,8 @@ When you hand several agents (Claude, Codex, DeepSeek, a local model, a future
 Kujo-native agent) the same prompt and ask them to build the same thing,
 RunLedger gives you a repeatable, inspectable **receipt** for each attempt: what
 model ran, against which repo and commit, what files changed, optional
-token/cost data you recorded, your verdict, and the follow-ups needed. Test
-results must currently be described in your verdict or notes; the reserved
-`tests` array has no CLI writer yet.
+token/cost data you recorded, manually recorded commands and test results,
+your verdict, and the follow-ups needed.
 
 It is built in the Kujo language runtime and stores everything as plain JSON on
 your local disk. No database, no network, no API key.
@@ -24,7 +23,7 @@ compares runs so you can answer questions like:
 
 - Which model followed the prompt best?
 - Which run changed the fewest files?
-- Which run did I mark as passing its tests in the verdict or notes?
+- Which run did I record as passing its tests?
 - Which run needed the fewest follow-up fixes?
 - Which run was most expensive?
 - Which run produced the cleanest handoff?
@@ -59,10 +58,13 @@ prioritizes:
   punctuation.
 
 This is not a universal enterprise-readiness certification: shared-ledger
-authorization, large-ledger scaling, and a formal security review remain open.
+authorization, efficient full-history reports at very large scales, and a
+formal security review remain open. File-ordered pages keep 10,000-receipt
+ledgers practical for bounded reads.
 See [the next review](docs/reviews/2026-09-22-readiness.md) for scoped evidence
-and priorities. The tool remains a local receipt store, not a multi-tenant
-service or an automated judge.
+and priorities, and read the [local security model](docs/SECURITY_MODEL.md)
+before using receipts with private information. The tool remains a local
+receipt store, not a multi-tenant service or an automated judge.
 
 ## Installation
 
@@ -116,6 +118,10 @@ runledger start \
 # Record token usage and cost (both optional, both manual)
 runledger usage <run-id> --input 140000 --output 22000
 runledger cost  <run-id> --total 1.18 --currency USD
+
+# Manually log what you ran and the observed outcome; neither command executes code
+runledger command <run-id> "./tests/run.sh"
+runledger test <run-id> "module and CLI suites" --status pass --details "all checks passed"
 
 # Link execution evidence without copying telemetry payloads
 runledger correlate <run-id> --watchdog-trace <trace-id> --dispatch-run <run-id>
@@ -178,9 +184,12 @@ runledger report  --task "$TASK" --output RUNLEDGER_REPORT.md
 | `start` | Create a new run record and capture start git state. |
 | `finish <run-id>` | Finalize a run: status, verdict, optional note, end git state. |
 | `list` | List recorded runs in a compact table (`--json` for raw). |
+| `verify` | Check every run file for malformed/unreadable entries (`--json` for diagnostics). |
 | `show <run-id>` | Show one run in readable form (`--json` for the raw record). |
 | `note <run-id> "text"` | Add a timestamped note. |
 | `followup <run-id> "text"` | Add a follow-up item. |
+| `command <run-id> "text"` | Manually record command text without executing it. |
+| `test <run-id> "name"` | Manually record a `pass`, `fail`, or `skip` test result. |
 | `usage <run-id>` | Record token usage. |
 | `cost <run-id>` | Record cost (manual, with configurable currency). |
 | `correlate <run-id>` | Link Watchdog, Dispatch, Relay, and Eval identifiers without duplicating their records. |
@@ -196,7 +205,22 @@ runledger report  --task "$TASK" --output RUNLEDGER_REPORT.md
 - `usage`: `--input` `--output` `--cache-read` `--cache-write` (all optional integers)
 - `cost`: `--total` `--currency` `--input` `--output` `--cache` (amounts are floats; only provided fields change)
 - `correlate`: `--watchdog-trace` `--watchdog-run` `--dispatch-run` `--relay-run` `--eval-run` (bounded identifiers only)
-- `compare` / `report`: `--task <name>`; `compare --json`; `report --output <file>`
+- `test`: `--status <pass|fail|skip>` (required); `--details <text>` (optional)
+- `list` / `compare` / `report`: `--strict` fails on any invalid run file; `--limit <1..1000>` and `--offset <N>` page through sorted run filenames; `list` and `compare` accept `--json`; `report` accepts `--output <file>`
+- `verify`: `--json` emits valid count and a list of `{file, error}` diagnostics
+- `compare` / `report`: `--task <name>` to filter results
+
+For large ledgers, `runledger report --limit 100 --offset 0` and subsequent
+pages avoid loading the other run files. The report labels its counts as
+page-only. Pagination selects filenames before the optional task filter;
+malformed entries within a page are skipped by default, while `--strict`
+validates the entire ledger before selecting a page. Use `runledger verify`
+to check all files without rendering a full report.
+
+Command descriptions are limited to 2,000 characters. Test names are limited
+to 200 characters and details to 2,000; each run can store at most 1,000
+commands and 1,000 test results. These are manual observations, not automatic
+test execution or a verified test verdict. Keep secrets out of the receipt.
 
 Allowed statuses: `in_progress`, `pass`, `partial`, `fail`, `abandoned`. An
 invalid status fails with a clear error and a non-zero exit code.
@@ -211,7 +235,7 @@ invalid status fails with a clear error and a non-zero exit code.
 
 ## Concurrent writers
 
-The mutating commands (`finish`, `note`, `followup`, `usage`, `cost`, and `correlate`)
+The mutating commands (`finish`, `note`, `followup`, `command`, `test`, `usage`, `cost`, and `correlate`)
 serialize each receipt's complete read-modify-write transaction through
 `<ledger>/locks/<run-id>.lock`. Writers targeting different receipts remain
 independent. Concurrent `start` commands atomically retry ID allocation when
@@ -226,7 +250,10 @@ that named stale lock. The next mutation will then proceed normally.
 
 ## Where data is stored
 
-By default RunLedger writes to `./.runledger/` in your current directory:
+By default RunLedger writes to `./.runledger/` in your current directory.
+The launcher gives new files owner-only permissions on POSIX systems; direct
+interpreter invocation uses the caller's umask. See the
+[security model](docs/SECURITY_MODEL.md) for access and backup guidance.
 
 ```text
 .runledger/
@@ -262,7 +289,7 @@ Each run is a single JSON object. Fields:
 | `start_commit` / `end_commit` | Git commit at start/finish (null if no git). |
 | `git_dirty_start` / `git_dirty_end` | Working-tree dirty state (null if no git). |
 | `changed_files` | Files changed between the start/end commits (when available), plus staged, unstaged, and untracked files at finish; names are de-duplicated. |
-| `commands` / `tests` | Reserved arrays for reported commands and test results. |
+| `commands` / `tests` | Manually recorded command descriptions and test outcomes. |
 | `usage` | `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_write_tokens`. |
 | `cost` | `currency`, `input_cost`, `output_cost`, `cache_cost`, `total_cost`. |
 | `correlation` | Optional `watchdog_trace_id`, `watchdog_run_id`, `dispatch_run_id`, `relay_run_id`, and `eval_run_id` links. |
@@ -360,11 +387,11 @@ stages, commits, resets, checks out, or otherwise mutates git state. If git is
 absent or the path isn't a repo, those fields are recorded as `null`/empty and
 the command still succeeds.
 
-Changes committed after `start` now count even when the worktree is clean at
+Changes committed after `start` count even when the worktree is clean at
 `finish`. The recorded file set also includes any changes still uncommitted at
-finish. These are repository observations, not proof that a particular agent
-authored every change. Git paths with unusual embedded newlines or quoting are
-not yet fully represented; see the review for the remaining limitation.
+finish. Git pathnames use NUL-delimited output to preserve embedded whitespace,
+quotes, and Unicode. These are repository observations, not proof that a
+particular agent authored every change.
 
 ## Running the tests
 
@@ -386,8 +413,8 @@ lock-ownership regression cases.
   from any provider automatically.
 - `finish` requires an explicit terminal status (`pass`, `partial`, `fail`, or
   `abandoned`) and a non-empty `--verdict`.
-- `commands` and `tests` are present in the schema but are reserved for future
-  population; the current CLI does not write them.
+- Commands and test outcomes are recorded manually, not run or checked by
+  RunLedger. `test --status pass` means the operator reported a pass.
 - The launcher needs a `kujo` binary (via `KUJO` or your `PATH`).
 - Run files are plain JSON; editing them by hand is supported. RunLedger
   tolerates missing fields, rejects mismatched run IDs, and skips invalid run
@@ -426,8 +453,10 @@ runledger/
     RUNLEDGER_REPORT.example.md  # sample generated report
   docs/audits/
     repository-hardening.md      # evidence-backed hardening receipt
+  docs/SECURITY_MODEL.md          # local trust boundary and operator guidance
   docs/reviews/
     2026-09-22-readiness.md       # next-session review and priorities
+  evaluation/scale_benchmark.py   # reproducible large-ledger paired timings
   .agent/
     next-agent-guide.md
 ```

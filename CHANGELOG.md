@@ -4,6 +4,13 @@ All notable changes to RunLedger are documented here.
 
 ## [Unreleased]
 
+- Preserve Git pathnames through NUL-delimited output, including whitespace, quotes, and newlines.
+- Add an opt-in `verify` command and strict list/compare/report modes so automation can detect skipped invalid receipts.
+- Escape untrusted Markdown in report headings, prose, and table cells.
+- Allow bounded manual command and test outcome capture, without executing commands.
+- Make new ledger files private under the POSIX launcher and document the single-operator security boundary.
+- Remove a shell readability check per receipt when listing; direct file-read errors retain the existing failure semantics.
+- Add bounded, file-ordered pagination for list/compare/report to keep large-ledger reads practical without weakening full-ledger `--strict` checks.
 - Include files committed between start and finish in the changed-file receipt, even when the checkout finishes clean.
 - Move the root argument parser into `src/args.kujo`; retain `runledger.kujo` as the required launcher entrypoint.
 - Restrict run IDs to portable printable characters and isolate the module-test workspace with a unique temporary directory.

@@ -1,0 +1,56 @@
+{
+  "baseline": "3cee875",
+  "current": "grouped-report optimization before db16d8e pagination",
+  "kujo": "kujo 1.4.0",
+  "samples": 1,
+  "warmups": 0,
+  "timeout_seconds": 120,
+  "sizes": {
+    "10000": {
+      "list": {
+        "baseline": {
+          "samples": [
+            {
+              "seconds": 120,
+              "exit": null,
+              "error": "timeout after 120s"
+            }
+          ],
+          "median_seconds": null
+        },
+        "current": {
+          "samples": [
+            {
+              "seconds": 61.794,
+              "exit": 0,
+              "error": ""
+            }
+          ],
+          "median_seconds": 61.794
+        }
+      },
+      "report": {
+        "baseline": {
+          "samples": [
+            {
+              "seconds": 120,
+              "exit": null,
+              "error": "timeout after 120s"
+            }
+          ],
+          "median_seconds": null
+        },
+        "current": {
+          "samples": [
+            {
+              "seconds": 120,
+              "exit": null,
+              "error": "timeout after 120s"
+            }
+          ],
+          "median_seconds": null
+        }
+      }
+    }
+  }
+}

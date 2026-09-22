@@ -22,6 +22,9 @@ security certification.
 
 ## Next-session work, ordered by evidence and impact
 
+Implementation and verification of these items are recorded in the
+[next-session completion review](2026-09-22-next-session-completion.md).
+
 | Priority | Work item | Evidence / acceptance criteria |
 | --- | --- | --- |
 | P1 | Define the intended deployment/trust model before claiming enterprise readiness. | `src/storage.kujo` accepts caller-specified ledger paths and local JSON files without identity/ACL management; decide supported single-user vs shared use, operator backups, permissions, and threat assumptions. Document and test chosen guarantees. Do not imply multi-tenant protection from file locks. |
