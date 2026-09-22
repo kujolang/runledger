@@ -182,6 +182,20 @@ mkdir -p "$TMPROOT/report-target-is-directory"
 expect_exit 1 env KUJO="$KUJO_BIN" "$RUNLEDGER" report --output "$TMPROOT/report-target-is-directory" --ledger "$LEDGER"
 grep -q '^error: cannot write file:' /tmp/runledger-cli-last.out || fail "report write failure was not actionable"
 
+# A completed, clean commit is still a run change, and committed + uncommitted
+# paths are reported once each.
+git -C "$REPO" add base.txt
+git -C "$REPO" commit -qm "prepare clean commit test"
+COMMIT_START="$(KUJO="$KUJO_BIN" "$RUNLEDGER" start --provider local --model local-agent --task "Committed Work" --repo "$REPO" --ledger "$LEDGER")"
+COMMIT_RID="$(printf '%s\n' "$COMMIT_START" | sed -n '1s/^Started run: //p')"
+printf 'committed\n' > "$REPO/committed.txt"
+git -C "$REPO" add committed.txt
+git -C "$REPO" commit -qm "implement run"
+KUJO="$KUJO_BIN" "$RUNLEDGER" finish "$COMMIT_RID" --status pass --verdict "clean commit" --ledger "$LEDGER"
+COMMIT_JSON="$(KUJO="$KUJO_BIN" "$RUNLEDGER" show "$COMMIT_RID" --json --ledger "$LEDGER")"
+[[ "$COMMIT_JSON" == *'"git_dirty_end": false'* ]] || fail "committed run should finish clean"
+[[ "$COMMIT_JSON" == *'"committed.txt"'* ]] || fail "committed change missing from run receipt"
+
 START2="$(KUJO="$KUJO_BIN" "$RUNLEDGER" start --provider local --model local-agent --task "No Git" --repo "$PLAIN" --ledger "$LEDGER")"
 RID2="$(printf '%s\n' "$START2" | sed -n '1s/^Started run: //p')"
 [[ -n "$RID2" ]] || fail "did not parse non-git run id"

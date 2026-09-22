@@ -14,7 +14,7 @@
 # the standard `kujo run` path where module imports work normally.
 
 from src.util import slug, pad_int
-from cli import parse_args
+from src.args import parse_args
 from src.record import new_record, is_valid_status, valid_statuses, empty_usage, empty_cost, empty_correlation, changed_file_count, followup_count
 from src.storage import generate_id, save_new, save_update, load, list_records, exists, ensure_ledger, run_path, is_safe_run_id, acquire_record_lock, release_record_lock
 from src.gitmeta import is_repo, head_commit, is_dirty, changed_files, start_metadata, end_metadata
@@ -46,14 +46,16 @@ func sh(cmd) {
 }
 
 # Throwaway workspace.
-WORK := join_path(env_or("TMPDIR", "/tmp"), "runledger_selftest")
+WORK := trim(sh("mktemp -d").stdout)
 LEDGER := join_path(WORK, "ledger")
 REPO := join_path(WORK, "repo")
 PLAIN := join_path(WORK, "plain")
 
 func setup() {
-    sh("rm -rf " + WORK)
-    create_dir(WORK)
+    if WORK == "" || path_is_dir(WORK) == false {
+        print("failed to create isolated test workspace")
+        exit(1)
+    }
     create_dir(PLAIN)
     # A real git repo to exercise the git metadata layer.
     create_dir(REPO)
@@ -66,7 +68,9 @@ func setup() {
 }
 
 func teardown() {
-    sh("rm -rf " + WORK)
+    if starts_with(WORK, "/") && path_is_dir(WORK) {
+        sh("rm -rf '" + WORK + "'")
+    }
 }
 
 # --- util ---------------------------------------------------------------
@@ -114,6 +118,8 @@ func test_storage() {
     check(path_is_dir(join_path(nested, "runs")) == true, "nested ledger directories are created")
     check(is_safe_run_id("safe-run-001") == true, "safe run id accepted")
     check(is_safe_run_id("../escape") == false, "path traversal run id rejected")
+    check(is_safe_run_id("line\nbreak") == false, "control characters rejected in run ids")
+    check(is_safe_run_id("back\\slash") == false, "platform-dependent separators rejected in run ids")
 
     id := generate_id(LEDGER, "claude-opus-4-8", "Build RunLedger")
     check_eq(id, "${today_prefix()}-claude-opus-4-8-build-runledger-001", "id has expected shape")
@@ -173,7 +179,7 @@ func test_lifecycle() {
     # finish
     rec["status"] := "pass"
     rec["verdict"] := "usable"
-    em := end_metadata(REPO)
+    em := end_metadata(REPO, rec["start_commit"])
     rec["end_commit"] := em["end_commit"]
     rec["git_dirty_end"] := em["git_dirty_end"]
     rec["changed_files"] := em["changed_files"]

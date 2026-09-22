@@ -100,6 +100,35 @@ func changed_files_in_repo(repo_path) {
     return out
 }
 
+# Capture work committed during a run as well as any changes still in the
+# working tree. A clean checkout after a commit must not look like a zero-file
+# run. Git receives both revisions as separately quoted arguments, not shell
+# syntax supplied by a caller or by a stored receipt.
+func changed_files_since(repo_path, start_commit, end_commit) {
+    mut out := []
+    if type(start_commit) == "string" && type(end_commit) == "string" &&
+       is_commit_id(start_commit) && is_commit_id(end_commit) && start_commit != end_commit {
+        committed := git(repo_path, "diff --name-only " + shq(start_commit) + " " + shq(end_commit) + " --")
+        if committed.exitcode == 0 {
+            out = collect_lines(out, committed.stdout)
+        }
+    }
+    for name in changed_files_in_repo(repo_path) {
+        if includes(out, name) == false { out = push(out, name) }
+    }
+    return out
+}
+
+func is_commit_id(value) {
+    if len(value) != 40 && len(value) != 64 { return false }
+    mut i := 0
+    while i < len(value) {
+        if index_of("0123456789abcdefABCDEF", substring(value, i, i + 1)) < 0 { return false }
+        i = i + 1
+    }
+    return true
+}
+
 # Append the non-empty, de-duplicated trimmed lines of `text` to `acc`.
 func collect_lines(acc, text) {
     mut out := acc
@@ -140,7 +169,7 @@ export func start_metadata(repo_path) {
 }
 
 # Bundle the git facts captured when a run is finished.
-export func end_metadata(repo_path) {
+export func end_metadata(repo_path, start_commit) {
     if is_repo(repo_path) == false {
         return {
             "end_commit": null,
@@ -148,9 +177,10 @@ export func end_metadata(repo_path) {
             "changed_files": []
         }
     }
+    end_commit := head_commit_in_repo(repo_path)
     return {
-        "end_commit": head_commit_in_repo(repo_path),
+        "end_commit": end_commit,
         "git_dirty_end": is_dirty_in_repo(repo_path),
-        "changed_files": changed_files_in_repo(repo_path)
+        "changed_files": changed_files_since(repo_path, start_commit, end_commit)
     }
 }

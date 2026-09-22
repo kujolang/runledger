@@ -25,8 +25,8 @@ from typing import Any
 
 
 IMPLEMENTATION_FILES = [
-    "cli.kujo",
     "runledger.kujo",
+    "src/args.kujo",
     "src/cli.kujo",
     "src/gitmeta.kujo",
     "src/record.kujo",
@@ -34,6 +34,12 @@ IMPLEMENTATION_FILES = [
     "src/storage.kujo",
     "src/util.kujo",
 ]
+
+
+def implementation_files(repo: Path) -> list[str]:
+    """Measure either layout without failing on the historical root parser."""
+    files = ["cli.kujo", *IMPLEMENTATION_FILES]
+    return [item for item in files if (repo / item).is_file()]
 
 
 def percentile(values: list[float], pct: float) -> float:
@@ -404,7 +410,7 @@ def peak_rss(repo: Path, env: dict[str, str], ledger: Path) -> dict[str, Any]:
 
 def check_suite(repo: Path, env: dict[str, str]) -> dict[str, Any]:
     started = time.perf_counter_ns()
-    outputs = [run_command([env["KUJO"], "check", str(repo / item)], env=env, cwd=repo) for item in IMPLEMENTATION_FILES]
+    outputs = [run_command([env["KUJO"], "check", str(repo / item)], env=env, cwd=repo) for item in implementation_files(repo)]
     return {
         "exit_code": 0 if all(item["exit_code"] == 0 for item in outputs) else 1,
         "wall_ms": (time.perf_counter_ns() - started) / 1_000_000.0,
@@ -419,7 +425,7 @@ def native_test(repo: Path, env: dict[str, str]) -> dict[str, Any]:
 
 
 def code_metrics(repo: Path) -> dict[str, Any]:
-    source_paths = [repo / item for item in IMPLEMENTATION_FILES]
+    source_paths = [repo / item for item in implementation_files(repo)]
     test_paths = sorted((repo / "tests").glob("*"))
 
     def metrics(paths: list[Path]) -> dict[str, int]:
@@ -453,7 +459,7 @@ def lint_observation(repo: Path, env: dict[str, str]) -> dict[str, Any]:
     warnings = 0
     failures = 0
     output_bytes = 0
-    for item in IMPLEMENTATION_FILES:
+    for item in implementation_files(repo):
         result = run_command([env["KUJO"], "lint", str(repo / item)], env=env, cwd=repo)
         warnings += result["stdout"].lower().count("warning") + result["stderr"].lower().count("warning")
         failures += result["exit_code"] != 0

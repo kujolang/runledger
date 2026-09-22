@@ -13,7 +13,7 @@ from src.record import new_record, is_valid_status, valid_statuses, empty_usage,
 from src.storage import generate_id, save_new, load, list_records, run_path, write_atomic_text, update_record
 from src.gitmeta import start_metadata, end_metadata
 from src.render import render_list, render_show, render_compare, render_report
-from cli import parse_args
+from src.args import parse_args
 
 VERSION := "1.1.0"
 
@@ -270,7 +270,7 @@ func cmd_finish(tokens) {
         if type(repo) != "string" || trim(repo) == "" {
             return {"error": usage("finish"), "usage_error": true}
         }
-        meta := end_metadata(repo)
+        meta := end_metadata(repo, rec["start_commit"])
         rec["end_commit"] := meta["end_commit"]
         rec["git_dirty_end"] := meta["git_dirty_end"]
         rec["changed_files"] := meta["changed_files"]

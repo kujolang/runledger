@@ -1,3 +1,4 @@
+# RunLedger argument parser. Kept under src with the other implementation modules.
 func normalize_flag_name(token) {
     if starts_with(token, "--") {
         return substring(token, 2, len(token))
@@ -8,15 +9,13 @@ func normalize_flag_name(token) {
 func contains_name(names, name) {
     mut i := 0
     while i < len(names) {
-        if names[i] == name {
-            return true
-        }
+        if names[i] == name { return true }
         i = i + 1
     }
     return false
 }
 
-func parse_args(tokens, bool_flags) {
+export func parse_args(tokens, bool_flags) {
     mut flags := {}
     mut positionals := []
     mut errors := []
@@ -70,5 +69,3 @@ func parse_args(tokens, bool_flags) {
     }
     return {"flags": flags, "positionals": positionals, "errors": errors}
 }
-
-export parse_args := parse_args
