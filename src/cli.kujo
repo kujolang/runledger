@@ -36,6 +36,7 @@ func usage(command) {
         "followup-short": "usage: runledger followup <run-id> \"follow-up text\"",
         "usage": "usage: runledger usage <run-id> [--input N] [--output N] [--cache-read N] [--cache-write N] [--ledger <dir>]",
         "cost": "usage: runledger cost <run-id> [--total N] [--currency CODE] [--input N] [--output N] [--cache N] [--ledger <dir>]",
+        "runtime-measurement": "usage: runledger runtime-measurement <run-id> --root <trusted-dir> --file <relative-file> --artifact sha256:<digest> [--ledger <dir>]",
         "correlate": "usage: runledger correlate <run-id> [--watchdog-trace ID] [--watchdog-run ID] [--dispatch-run ID] [--relay-run ID] [--eval-run ID] [--ledger <dir>]",
         "compare": "usage: runledger compare [--task <name>] [--json] [--strict] [--limit N] [--offset N] [--ledger <dir>]",
         "report": "usage: runledger report [--task <name>] [--output <file>] [--strict] [--limit N] [--offset N] [--ledger <dir>]"
@@ -669,6 +670,44 @@ func correlation_value_safe(value) {
     return true
 }
 
+# Retain an exact-byte reference in the existing notes extension, without
+# projecting counters or attributing provider usage. Watchdog owns validation
+# of measurement semantics; this command verifies identity and the v1 marker.
+func cmd_runtime_measurement(tokens) {
+    parsed := parse_args(tokens, [])
+    if validate_parsed(parsed, ["root", "file", "artifact", "ledger"], 1, "runtime-measurement") == false { return 2 }
+    ledger := resolve_ledger(parsed)
+    id := first_positional(parsed)
+    root := flag(parsed, "root")
+    file := flag(parsed, "file")
+    artifact := flag(parsed, "artifact")
+    if type(ledger) != "string" || type(id) != "string" || type(root) != "string" || type(file) != "string" || type(artifact) != "string" { return usage_error(usage("runtime-measurement")) }
+    mut text := ""
+    try {
+        raw := read_file_beneath(root, file, 8192)
+        if artifact != "sha256:" + sha256(raw) { print_error("invalid runtime measurement artifact"); return 1 }
+        report := parse_json(raw)
+        if type(report) != "dict" { print_error("invalid runtime measurement artifact"); return 1 }
+        if has_key(report, "schema") == 0 || report["schema"] != "kujo.runtime-measurements/v1" { print_error("invalid runtime measurement artifact"); return 1 }
+        text = to_json({"artifact": artifact, "schema": "kujo.runtime-measurements/v1", "verification": "exact_bytes_sha256", "bytes": byte_length(raw)})
+    } except ignored {
+        print_error("invalid runtime measurement artifact")
+        return 1
+    }
+    result := update_record(ledger, id, func(rec) {
+        for note in rec["notes"] {
+            if type(note) == "dict" && has_key(note, "text") && note["text"] == text { return {"record": rec} }
+        }
+        if len(rec["notes"]) >= 1000 { return {"error": "receipt note limit reached"} }
+        rec["notes"] := push(rec["notes"], {"at": now_utc(), "text": text})
+        touch(rec)
+        return {"record": rec}
+    })
+    if has_key(result, "error") { print_error(result["error"]); return 1 }
+    print("Attached runtime measurement reference")
+    return 0
+}
+
 func cmd_correlate(tokens) {
     parsed := parse_args(tokens, [])
     names := ["watchdog-trace", "watchdog-run", "dispatch-run", "relay-run", "eval-run"]
@@ -901,6 +940,8 @@ func print_help() {
         "             usage: runledger usage <run-id> [--input N] [--output N] [--cache-read N] [--cache-write N]",
         "  cost       Record cost for a run",
         "             usage: runledger cost <run-id> [--total N] [--currency CODE] [--input N] [--output N] [--cache N]",
+        "  runtime-measurement  Verify and retain a runtime artifact reference in receipt notes",
+        "             usage: runledger runtime-measurement <run-id> --root <dir> --file <relative-file> --artifact sha256:<digest>",
         "  correlate  Link this receipt to Watchdog, Dispatch, Relay, or Eval identifiers",
         "             usage: runledger correlate <run-id> [--watchdog-trace ID] [--watchdog-run ID] [--dispatch-run ID] [--relay-run ID] [--eval-run ID]",
         "  compare    Compare runs in the ledger",
@@ -967,6 +1008,7 @@ export func main(argv) {
     if cmd == "cost" {
         return cmd_cost(rest)
     }
+    if cmd == "runtime-measurement" { return cmd_runtime_measurement(rest) }
     if cmd == "correlate" {
         return cmd_correlate(rest)
     }

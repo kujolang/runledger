@@ -471,3 +471,7 @@ generated report for output shape. The current hardening evidence lives under
 For repo sweeps, exclude generated/bulk paths such as `.runledger/` and avoid
 treating generated report output as source examples unless the task explicitly
 targets report formatting.
+
+## Kujo runtime measurements (unreleased)
+
+Use `runtime-measurement` to verify and retain a summary artifact reference in existing receipt notes. Usage, costs and receipt lifecycle remain unchanged. See [runtime evidence contract](docs/RUNTIME_MEASUREMENTS.md).

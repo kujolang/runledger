@@ -64,6 +64,8 @@ Commands:
              usage: runledger usage <run-id> [--input N] [--output N] [--cache-read N] [--cache-write N]
   cost       Record cost for a run
              usage: runledger cost <run-id> [--total N] [--currency CODE] [--input N] [--output N] [--cache N]
+  runtime-measurement  Verify and retain a runtime artifact reference in receipt notes
+             usage: runledger runtime-measurement <run-id> --root <dir> --file <relative-file> --artifact sha256:<digest>
   correlate  Link this receipt to Watchdog, Dispatch, Relay, or Eval identifiers
              usage: runledger correlate <run-id> [--watchdog-trace ID] [--watchdog-run ID] [--dispatch-run ID] [--relay-run ID] [--eval-run ID]
   compare    Compare runs in the ledger
