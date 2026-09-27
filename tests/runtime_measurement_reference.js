@@ -41,5 +41,14 @@ try {
     attach('../report.json',hash(raw),false);
     attach(path.join(temp,'report.json'),hash(raw+' '),false);
     assert.equal(cli(['show',id,'--json']),before,'rejection changed receipt');
+    cli(['usage',id,'--input','11']);
+    cli(['cost',id,'--total','0.02']);
+    fs.writeFileSync(path.join(temp,'report.json'),raw);
+    attach('report.json',hash(raw),true);
+    const withUsage=JSON.parse(cli(['show',id,'--json']));
+    assert.equal(withUsage.usage.input_tokens,11);
+    assert.equal(withUsage.usage.output_tokens,null);
+    assert.equal(withUsage.cost.total_cost,0.02);
+    assert.equal(withUsage.notes.length,1);
     console.log('runtime_measurement_reference: PASS');
 } finally { fs.rmSync(temp,{recursive:true,force:true}); }
