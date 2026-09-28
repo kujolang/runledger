@@ -11,4 +11,4 @@ KUJO="${KUJO:-kujo}"
 "$KUJO" run "$PROJECT_DIR/tests/runledger_test.kujo"
 bash "$PROJECT_DIR/tests/cli_integration.sh"
 
-node "$PROJECT_DIR/tests/runtime_measurement_reference.js"
+node "$PROJECT_DIR/tests/runtime_measurement_reference.cjs"
