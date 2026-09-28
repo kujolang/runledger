@@ -2,7 +2,7 @@
 
 All notable changes to RunLedger are documented here.
 
-## [1.2.0] — candidate
+## [1.2.0] — 2026-09-28
 
 - Added `runtime-measurement` CLI byte-integrity verification and idempotent artifact notes using existing receipt locks. Nullable usage/cost, receipt schema and lifecycle remain unchanged.
 - Make the Node measurement regression explicitly CommonJS, independent of parent package metadata.

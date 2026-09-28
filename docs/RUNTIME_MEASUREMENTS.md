@@ -1,4 +1,4 @@
-# Runtime measurement evidence (unreleased)
+# Runtime measurement evidence — RunLedger 1.2.0
 
 RunLedger remains a receipt/correlation store. Watchdog validates and observes
 Kujo runtime facts; RunLedger retains their content address without another
@@ -10,8 +10,8 @@ runledger runtime-measurement RUN_ID --root TRUSTED_ARTIFACT_ROOT \
   --file RELATIVE_REPORT_JSON --artifact sha256:EXPECTED_LOWERCASE_HEX
 ```
 
-Use a current Kujo source build with `read_file_beneath` and `byte_length`;
-released npm/native 1.5.0 does not supply this complete integration.
+Use published Kujo 1.6.0 or newer, which provides `read_file_beneath` and
+`byte_length`. A source runtime checkout is not required.
 
 The command reads at most 8192 UTF-8 bytes with `read_file_beneath`, rejecting
 symlinks, path traversal, absolute paths, non-regular files and oversized data.
@@ -51,7 +51,7 @@ counters remain in the referenced Watchdog observation/artifact. Do not interpre
 an Agents SDK budget default of zero as observed usage. Use source-aware evidence
 and preserve unavailable fields as null.
 
-Tests require Node.js in addition to Kujo. `KUJO=/path/to/source/kujo ./tests/run.sh` includes real CLI reference,
+Tests require Node.js in addition to Kujo. `KUJO=/path/to/kujo ./tests/run.sh` includes real CLI reference,
 deduplication, tampering, version, oversized, path/symlink, privacy and null tests.
 Watchdog's `tests/runtime_measurements_adapter_check.js --integration` runs the
 actual measured workload, HTTP ingestion/restart and receipt correlation path.

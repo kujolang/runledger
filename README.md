@@ -68,7 +68,15 @@ receipt store, not a multi-tenant service or an automated judge.
 
 ## Installation
 
-RunLedger runs on the Kujo interpreter. You need a `kujo` binary available.
+RunLedger 1.2.0 requires Kujo 1.6.0 or newer. Install with Kennel 1.1.0 or newer:
+
+```bash
+kennel tool install runledger@1.2.0
+runledger version
+```
+
+Alternatively, download the `v1.2.0` source release and use its POSIX launcher
+or invoke `runledger.kujo` directly. No provider credentials are required.
 
 ### Preflight: verify the right `kujo` binary
 
@@ -472,6 +480,6 @@ For repo sweeps, exclude generated/bulk paths such as `.runledger/` and avoid
 treating generated report output as source examples unless the task explicitly
 targets report formatting.
 
-## Kujo runtime measurements (unreleased)
+## Kujo runtime measurement references
 
 Use `runtime-measurement` to verify and retain a summary artifact reference in existing receipt notes. Usage, costs and receipt lifecycle remain unchanged. See [runtime evidence contract](docs/RUNTIME_MEASUREMENTS.md).

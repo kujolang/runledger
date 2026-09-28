@@ -1,6 +1,7 @@
 # runledger 1.2.0 companion release candidate
 
-Status: candidate, not published. No release tag created by this preparation.
+Release preparation record. Publication is recorded by the immutable GitHub Release;
+this document retains the pre-publication verification scope.
 
 ## Runtime evidence
 
@@ -11,11 +12,10 @@ This does not certify other platforms; hosted candidate checks must be inspected
 
 Local canonical gate passed: module tests, CLI integration and runtime-measurement reference regression. The measurement test now declares CommonJS via .cjs, so a parent package.json cannot change its module mode. New CI runs the canonical gate on Linux and macOS. RunLedger records evidence and declared outcomes; it does not authorize execution or verify effect truth.
 
-## Release completion checklist
+## Distribution and runtime support
 
-- Inspect hosted checks for the exact candidate commit.
-- Verify clean source-archive consumption and package version consistency.
-- Review the candidate changelog and turn its candidate heading into a release date only when publishing.
-- Create an immutable tag at the tested final source; do not move an existing tag.
-- Publish the GitHub source release and reconcile the Kennel index if this package is distributed there.
-- Retain experimental contract labels. Do not publish the separate participant SDK packages.
+This release supports Kujo 1.6.0 or newer; the package manifest and public
+installation docs agree. Earlier runtime versions are not certified by this
+release. The GitHub source release is reconciled by the central Kennel publisher;
+old package archives remain immutable. Final hosted runs and installed-package
+checks are retained in the release receipt, not inferred from historical tests.
