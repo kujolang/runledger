@@ -2,7 +2,11 @@
 
 All notable changes to RunLedger are documented here.
 
-## [Unreleased]
+## [1.2.0] — 2026-09-28
+
+- Added `runtime-measurement` CLI byte-integrity verification and idempotent artifact notes using existing receipt locks. Nullable usage/cost, receipt schema and lifecycle remain unchanged.
+- Make the Node measurement regression explicitly CommonJS, independent of parent package metadata.
+- Add canonical runtime CI on Kujo 1.6.0.
 
 - Preserve Git pathnames through NUL-delimited output, including whitespace, quotes, and newlines.
 - Add an opt-in `verify` command and strict list/compare/report modes so automation can detect skipped invalid receipts.
@@ -42,7 +46,3 @@ All notable changes to RunLedger are documented here.
 ## [0.1.0] - 2026-06-27
 
 - Prepared RunLedger for public release with local agent-run receipts, read-only git metadata capture, comparison/report output, and CLI integration coverage.
-
-## Unreleased — runtime measurement evidence
-
-Added `runtime-measurement` CLI byte-integrity verification and idempotent artifact notes using existing receipt locks. Nullable usage/cost, receipt schema and lifecycle remain unchanged.

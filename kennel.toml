@@ -1,0 +1,16 @@
+[package]
+name = "runledger"
+version = "1.2.0"
+description = "Local evidence receipts for AI-agent build runs; no execution or replay authority."
+license = "MIT"
+repository = "https://github.com/kujolang/runledger"
+readme = "README.md"
+
+[kujo]
+minimum_version = "1.6.0"
+entry = "runledger.kujo"
+sources = ["src", "."]
+includes = ["README.md", "docs", "tests", "bin", "LICENSE", "VERSION", "CHANGELOG.md"]
+excludes = [".git", "kennel_packages", ".tmp", "node_modules"]
+
+[dependencies]
