@@ -1,6 +1,6 @@
 # RunLedger
 
-[![Version](https://img.shields.io/badge/version-1.2.0-black)](https://github.com/kujolang/runledger)
+[![Version](https://img.shields.io/badge/version-1.2.1-black)](https://github.com/kujolang/runledger)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 [![built with Kujo](https://img.shields.io/badge/built%20with-Kujo-white.svg)](https://github.com/kujolang/kujo)
 
@@ -68,14 +68,14 @@ receipt store, not a multi-tenant service or an automated judge.
 
 ## Installation
 
-RunLedger 1.2.0 requires Kujo 1.6.0 or newer. Install with Kennel 1.1.0 or newer:
+RunLedger 1.2.1 requires Kujo 1.6.0 or newer. Install with Kennel 1.1.0 or newer:
 
 ```bash
-kennel tool install runledger@1.2.0
+kennel tool install runledger@1.2.1
 runledger version
 ```
 
-Alternatively, download the `v1.2.0` source release and use its POSIX launcher
+Alternatively, download the `v1.2.1` source release and use its POSIX launcher
 or invoke `runledger.kujo` directly. No provider credentials are required.
 
 ### Preflight: verify the right `kujo` binary

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.1 — 2026-10-21
+
+- Require patched Node.js versions for measurement-reference tests and release tooling.
+- Preserve local receipt storage, concurrent mutation, correlation and report contracts.
+
 All notable changes to RunLedger are documented here.
 
 ## [1.2.0] — 2026-09-28
